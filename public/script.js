@@ -162,7 +162,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // History Functions
     function seedInitialHistory() {
-        if (!localStorage.getItem('queryHistory')) {
+        if (!localStorage.getItem('demoQueryHistory')) {
             const initialHistory = [
                 {
                     sql: "SELECT users.name, SUM(orders.total) \nFROM users \nJOIN orders ON users.id = orders.user_id \nWHERE users.age >= 18 \nGROUP BY users.name;",
@@ -175,24 +175,24 @@ document.addEventListener('DOMContentLoaded', () => {
                     time: new Date().toLocaleTimeString()
                 }
             ];
-            localStorage.setItem('queryHistory', JSON.stringify(initialHistory));
+            localStorage.setItem('demoQueryHistory', JSON.stringify(initialHistory));
         }
     }
 
     function saveHistory(sql, mql) {
-        let history = JSON.parse(localStorage.getItem('queryHistory') || '[]');
+        let history = JSON.parse(localStorage.getItem('demoQueryHistory') || '[]');
         history.unshift({
             sql,
             mql,
             time: new Date().toLocaleTimeString()
         });
         if (history.length > 20) history.pop();
-        localStorage.setItem('queryHistory', JSON.stringify(history));
+        localStorage.setItem('demoQueryHistory', JSON.stringify(history));
         renderHistory();
     }
 
     function renderHistory() {
-        let history = JSON.parse(localStorage.getItem('queryHistory') || '[]');
+        let history = JSON.parse(localStorage.getItem('demoQueryHistory') || '[]');
         historyList.innerHTML = '';
         history.forEach((item, index) => {
             const div = document.createElement('div');
@@ -260,13 +260,20 @@ document.addEventListener('DOMContentLoaded', () => {
         fixSuggestion.style.display = 'none';
 
         try {
-            const response = await fetch('/api/transpile', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ sql: query })
-            });
-            
-            const data = await response.json();
+            let data;
+            try {
+                const response = await fetch('/api/transpile', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sql: query })
+                });
+                if (!response.ok) throw new Error('no backend');
+                data = await response.json();
+            } catch (backendErr) {
+                // Static hosting (GitHub Pages): run the Python transpiler in-browser
+                mqlEditor.setValue('// LOADING COMPILER ENGINE...');
+                data = await window.transpileInBrowser(query);
+            }
             document.body.classList.remove('is-transpiling');
 
             if (data.error) {
