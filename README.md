@@ -161,15 +161,39 @@ The celebration closes after eight seconds or with Escape/Close, then returns fo
 Reduced-motion users see a stationary portrait. Only this CREATE TABLE AST triggers it; strings,
 comments, failed compilations, Debug and Walkthrough do not trigger the celebration.
 
-### Classroom chase Easter egg
+### Review-ready History Log
 
-Enter `RUN FROM CLASS;` (or `SELECT * FROM attendance;`) and click EXECUTE.
-The opening tells the first-class escape story using the existing professor portrait.
-You play as Sir: dodge flying student excuses and suspicious questions in three lanes with
-left/right, A/D, or the on-screen touch buttons. Three lives, +10 for each dodge, 50 points to win.
+History always starts with nine pinned review demonstrations, including for existing saved projects.
+Each button includes a title, what to explain and the SQL. Clicking loads it; EXECUTE compiles it.
+The sequence covers filter/sort/pagination; JOIN + aggregation; HAVING and five aggregate functions;
+boolean/NULL checks; the full CRUD lifecycle; intentional semantic/syntax errors; the Dhawal game;
+and the professor celebration. User history stays below the pinned group and is not replaced.
+For CRUD, RUN_DEMO executes the batch; RESET_DB before repeating. The read-only SELECT presets
+work with both result comparison and pipeline inspection. ORDER BY ties in the main JOIN demo use
+a second sort column for deterministic engine comparisons.
+
+### Classroom chase Easter egg: Sir vs Dhawal
+
+Choose **08 · Dhawal boss fight** in History, or enter `RUN FROM CLASS;`
+(or `SELECT * FROM attendance;`) and click EXECUTE. The opening shows Dhawal escaping the
+first compiler-design class and Sir chasing him, using the existing professor portrait.
+
+You play as Sir. There are **three lives and a 400-point target**, with three escalating phases:
+The Great Escape, Viva Panic and Reply-All Apocalypse. Targeted attacks and two-lane barrages
+have visible danger warnings and always leave a safe lane. The guaranteed safe lane changes on
+each wave. Later phases shorten both warning and travel time. Use left/right, A/D, or touch buttons.
+
+- **OBJECTION! / Space:** a 0.65-second shield with a five-second cooldown. Blocking saves a
+  life but awards no points and resets your combo. It is not an unlimited escape button.
+- **Combos:** 10 points per dodge, rising to x2 at four consecutive dodges and x3 at eight.
+- **Close calls:** leaving an incoming attack lane in the final 0.23 seconds earns +5 on a dodge.
+- **Coffee:** every fifth wave has a pickup in the safe lane; catching it subtracts two seconds
+  from the shield cooldown. It never damages Sir.
+
 Pause/Resume (or P), automatic background pause, replay and Escape/Close are supported.
-Winning animates a fictional email from Sir; losing causes an excuse-buffer-overflow tea break.
-No real email is sent. The best score is saved locally; reduced-motion users get simplified motion.
+Winning animates Sir's fictional email addressed to **Dhawal**. Losing awards Dhawal a degree in
+“Advanced Excuse Engineering”. No real email is sent. A new best-score key separates this harder
+edition from the original five-dodge game. Reduced-motion users get simplified decorative motion.
 Existing Easter eggs and the professor appreciation celebration remain available.
 
 ## Static hosting / GitHub Pages

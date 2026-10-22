@@ -52,3 +52,36 @@
 .chase-intro-cast img { width:48px; height:55px; border:3px solid #302418; border-radius:12px; object-fit:cover; transform:rotate(-8deg); }
 .chase-dialog { margin:auto; text-shadow:none; }
 .chase-laptop img { width:35px; height:40px; object-fit:cover; border-radius:10px; border:2px solid #302418; vertical-align:middle; }
+/* Boss-fight edition: danger telegraphs, phases, combo feedback and faculty shield. */
+.chase-status { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 16px; background:#302418; color:#fff3d7; font-size:11px; }
+.chase-status strong { color:#ffcf49; }
+.chase-progress { height:7px; background:#e1c99c; overflow:hidden; }
+.chase-progress div { height:100%; background:#d7442d; transform-origin:left; transform:scaleX(0); transition:transform .15s; }
+.chase-stage { height:min(530px,59dvh); }
+.chase-attacks { position:absolute; inset:0; pointer-events:none; z-index:5; }
+.chase-projectile { top:28%; width:29%; font-size:clamp(10px,1.5vw,15px); padding:10px 5px; }
+.chase-projectile.incoming { background:#ffd58a; border-style:dashed; opacity:.8; }
+.chase-lanes i { position:relative; transition:background-color .1s; }
+.chase-lanes i.danger { background:repeating-linear-gradient(-45deg,#e6533329,#e6533329 12px,#e6533314 12px,#e6533314 24px); }
+.chase-lanes i.danger::after { content:'⚠ INCOMING'; position:absolute; bottom:28%; left:0; width:100%; text-align:center; color:#9b281b; font-size:12px; font-weight:bold; }
+.chase-lanes i.coffee-lane { background:#428f6130; }
+.chase-projectile.coffee { background:#cce7bb; border-color:#317241; box-shadow:4px 4px 0 #317241; font-size:13px; }
+.chase-feedback { position:absolute; top:54%; left:50%; transform:translateX(-50%); z-index:7; font-weight:1000; color:#285a45; text-shadow:2px 2px #fff9ec; font-size:clamp(17px,3vw,28px); white-space:nowrap; pointer-events:none; }
+.chase-feedback:empty { display:none; }
+.chase-feedback.bad { color:#c12e22; }
+.chase-feedback.shield { color:#22679b; }
+.chase-feedback.phase { color:#ac3828; font-size:clamp(14px,2.7vw,25px); }
+.prof-shield::before { content:''; position:absolute; inset:-14px -10px; border:5px solid #72d9ff; border-radius:50%; background:#72d9ff40; box-shadow:0 0 0 5px #ffffff70; }
+.chase-student { transition:left .25s ease; transform:translateX(-50%); max-width:150px; }
+.chase-student b { white-space:nowrap; font-size:10px; }
+.chase-dialog[data-phase='2'] .chase-stage { background:linear-gradient(#d3e6df 0 55%,#b1b5aa 55%); }
+.chase-dialog[data-phase='3'] .chase-stage { background:linear-gradient(#e1d5ed 0 55%,#ba9da5 55%); }
+.chase-dialog[data-phase='3'] .classroom-board { background:#6c3248; }
+.chase-dialog[data-phase='3'] .chase-projectile:not(.coffee) { background:#ffddf2; box-shadow:4px 4px 0 #9f3d73; }
+.chase-controls { padding:10px 14px; }
+#chase-shield { background:#8cd2e8; min-width:175px; }
+.chase-story { gap:9px; }
+.chase-story h2 { font-size:clamp(23px,3.5vw,36px); }
+.chase-story p { font-size:clamp(11px,1.5vw,14px); }
+.chase-ending h2 { font-size:clamp(24px,3.6vw,35px); }
+@media(max-width:500px) { .chase-status { font-size:9px; padding:8px; flex-wrap:wrap; } .chase-controls { padding:9px; gap:6px; } .chase-controls button { min-width:65px; padding:8px 6px; font-size:11px; } #chase-shield { min-width:140px; } .chase-lanes i.danger::after { font-size:9px; } .chase-story { justify-content:flex-start; } .chase-feedback { white-space:normal; width:95%; text-align:center; } }

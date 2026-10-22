@@ -258,21 +258,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function seedInitialHistory() {
-        if (!readHistory().length) {
-            const initialHistory = [
-                {
-                    sql: "SELECT users.name, SUM(orders.total) \nFROM users \nJOIN orders ON users.id = orders.user_id \nWHERE users.age >= 18 \nGROUP BY users.name;",
-                    mql: "// Pre-loaded complex query",
-                    time: new Date().toLocaleTimeString()
-                },
-                {
-                    sql: "SELECT name, age FROM users WHERE age >= 18;",
-                    mql: "// Pre-loaded simple query",
-                    time: new Date().toLocaleTimeString()
-                }
-            ];
-            writeHistory(initialHistory);
-        }
+        // Review presets are pinned at render time, including for existing users.
+        // Keep their own history/project untouched rather than seed only new installs.
     }
 
     function saveHistory(sql, mql) {
@@ -288,26 +275,35 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderHistory() {
-        let history = readHistory();
-        historyList.innerHTML = '';
-        history.forEach((item, index) => {
-            const div = document.createElement('div');
-            div.className = 'history-item';
-            const sqlLabel = document.createElement('div');
-            sqlLabel.className = 'history-item-sql';
-            sqlLabel.textContent = item.sql;
-            const timestamp = document.createElement('div');
-            timestamp.className = 'history-item-time';
-            timestamp.textContent = item.time;
-            div.append(sqlLabel, timestamp);
-            div.addEventListener('click', () => {
+        historyList.replaceChildren();
+        function heading(text) {
+            const label = document.createElement('h3'); label.className = 'history-section-title'; label.textContent = text; historyList.append(label);
+        }
+        function entry(item, pinned) {
+            const button = document.createElement('button'); button.type = 'button'; button.className = 'history-item';
+            if (pinned) {
+                const title = document.createElement('strong'); title.className = 'history-demo-title'; title.textContent = item.title;
+                const note = document.createElement('span'); note.className = 'history-demo-note'; note.textContent = item.note;
+                button.append(title, note); button.classList.add('history-preset'); button.dataset.kind = item.kind;
+            }
+            const sql = document.createElement('span'); sql.className = 'history-item-sql'; sql.textContent = item.sql;
+            button.append(sql);
+            if (!pinned) {
+                const stamp = document.createElement('span'); stamp.className = 'history-item-time'; stamp.textContent = item.time; button.append(stamp);
+            }
+            button.addEventListener('click', () => {
                 sqlEditor.setValue(item.sql);
-                mqlEditor.setValue('// Query restored. Compile it to refresh the output.');
-                historyPanel.classList.remove('active');
-                playSound('blip');
+                mqlEditor.setValue('// Query restored. Click EXECUTE to compile or open the Easter egg.');
+                historyPanel.classList.remove('active'); sqlEditor.focus(); playSound('blip');
             });
-            historyList.appendChild(div);
-        });
+            historyList.append(button);
+        }
+        heading('PINNED // REVIEW DEMOS');
+        (window.MiniSQLReview || []).forEach(item => entry(item, true));
+        heading('RECENT // YOUR QUERIES');
+        const recent = readHistory();
+        recent.forEach(item => entry(item, false));
+        if (!recent.length) { const hint = document.createElement('p'); hint.textContent = 'Your executed queries appear here.'; historyList.append(hint); }
     }
 
     // Render AST recursively
