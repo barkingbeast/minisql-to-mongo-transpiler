@@ -13,7 +13,7 @@ const project={format:'minisql-project',version:1,sql:'SELECT id FROM users;',hi
 {id:'t_orders',name:'orders',x:500,y:50,columns:[{id:'c-2',name:'user_id',type:'int',isPk:false,fkTo:'t_users',fkColumn:'c-1'}]}
 ]};
 assert.deepEqual(validate(JSON.parse(JSON.stringify(project))), project);
-for(const corrupt of [p=>p.version=2,p=>p.tables[1].columns[0].type='text',p=>p.tables[1].columns[0].fkColumn='missing',p=>p.tables[0].name='<img src=x>',p=>p.tables[0].x=Infinity,p=>p.tables[0].columns[0].isPk=false,p=>p.tables[1].columns[0].id='c-1']){
+for(const corrupt of [p=>p.version=2,p=>p.tables[1].columns[0].type='text',p=>p.tables[1].columns[0].fkColumn='missing',p=>p.tables[0].name='<img src=x>',p=>p.tables[0].x=Infinity,p=>p.tables[0].columns[0].isPk=false,p=>p.tables[1].columns[0].id='c-1',p=>delete p.tables[0].name,p=>delete p.tables[1].columns[0].fkTo]){
  const p=structuredClone(project);corrupt(p);assert.throws(()=>validate(p));
 }
 console.log('Game win/loss/scoring and project validation/round-trip checks passed.');

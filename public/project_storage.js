@@ -8,14 +8,15 @@
         if (!Array.isArray(tables) || tables.length > 40) throw new Error('Use at most 40 tables.');
         const ids = new Set(), names = new Set(), columnIds = new Set();
         for (const t of tables) {
-            if (!t || !validId.test(t.id) || ids.has(t.id) || !validName.test(t.name) || t.name.startsWith('__minisql_') || names.has(t.name)) throw new Error('Tables need unique valid names and IDs.');
+            if (!t || typeof t.id !== 'string' || typeof t.name !== 'string' || !validId.test(t.id) || ids.has(t.id) || !validName.test(t.name) || t.name.startsWith('__minisql_') || names.has(t.name)) throw new Error('Tables need unique valid names and IDs.');
             ids.add(t.id); names.add(t.name);
             if (!Number.isFinite(t.x) || !Number.isFinite(t.y) || Math.abs(t.x) > 10000 || Math.abs(t.y) > 10000) throw new Error('Invalid table position.');
             if (!Array.isArray(t.columns) || !t.columns.length || t.columns.length > 100) throw new Error('Each table needs 1–100 columns.');
             const columns = new Set();
             if (t.columns.filter(c => c.isPk).length > 1) throw new Error('This editor supports one primary-key column per table.');
             for (const c of t.columns) {
-                if (!c || !validId.test(c.id) || columnIds.has(c.id) || !validName.test(c.name) || c.name.startsWith('__minisql_') || columns.has(c.name) || !types.has(c.type) || typeof c.isPk !== 'boolean') throw new Error('Columns need unique valid names/IDs and supported types.');
+                if (!c || typeof c.id !== 'string' || typeof c.name !== 'string' || !validId.test(c.id) || columnIds.has(c.id) || !validName.test(c.name) || c.name.startsWith('__minisql_') || columns.has(c.name) || !types.has(c.type) || typeof c.isPk !== 'boolean') throw new Error('Columns need unique valid names/IDs and supported types.');
+                if (Boolean(c.fkTo) !== Boolean(c.fkColumn) || (c.fkTo && (typeof c.fkTo !== 'string' || typeof c.fkColumn !== 'string'))) throw new Error('References need both a table ID and a column ID.');
                 columnIds.add(c.id); columns.add(c.name);
             }
         }
