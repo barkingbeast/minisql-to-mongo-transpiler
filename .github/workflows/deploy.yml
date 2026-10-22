@@ -34,6 +34,8 @@ jobs:
           node --check public/script.js
           node --check public/pyodide_bridge.js
           node --check public/easter_eggs.js
+          node --check public/professor_celebration.js
+          node --check public/walkthrough.js
 
       - name: Bundle compiler sources into the site
         run: |

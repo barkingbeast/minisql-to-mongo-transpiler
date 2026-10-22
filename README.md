@@ -41,13 +41,16 @@ status on a failed compilation or unreadable file.
 - SELECT *, field projections, WHERE, UPDATE SET, DELETE FROM.
 - Comparisons =, ==, !=, <>, >, <, >=, <=; column-to-column and literal-to-column comparisons.
 - NOT, AND, OR, parentheses, IS NULL, IS NOT NULL; NOT binds before AND, which binds before OR.
-- COUNT(*), COUNT(column), SUM(column), AVG(column), and one GROUP BY column.
+- COUNT(*), COUNT(column), SUM(column), AVG(column), MIN(column), MAX(column), and one GROUP BY column.
+- Column and aggregate aliases with AS; multi-field ORDER BY with ASC/DESC (including output aliases).
+- LIMIT with optional OFFSET; LIMIT 0 produces an empty result.
+- HAVING with aggregate expressions, aggregate aliases, grouped fields, and nested boolean conditions.
 - JOIN and INNER JOIN with one equality between qualified fields; chained joins are supported.
 - Signed numbers, TRUE/FALSE/NULL, single or double quoted strings with doubled quote escaping,
   -- line comments and /* block comments */.
 - Multiple statements separated by semicolons; the final semicolon is optional.
 
-Aliases, self joins, outer joins, subqueries, ORDER BY, LIMIT, DISTINCT, HAVING, constraints and
+Table aliases, self joins, outer joins, subqueries, DISTINCT, constraints and
 arithmetic expressions are not supported. Unsupported syntax returns an error.
 Names are case-sensitive, keywords and type names are case-insensitive.
 The prefix __minisql_ is reserved for compiler-generated fields.
@@ -85,19 +88,48 @@ With the sample data, RUN_DEMO returns:
 Qualified projected names are flattened for JOIN output (users.name becomes users_name);
 aggregate labels use count_all, count_age, sum_orders_total, etc.
 COUNT(column) excludes null/missing values. An ungrouped aggregate on empty input returns
-one row: counts are zero and SUM/AVG are null. Explicit projections omit MongoDB's generated _id
+one row: counts are zero and SUM/AVG/MIN/MAX are null. Explicit projections omit MongoDB's generated _id
 unless requested. SELECT * retains MongoDB document shapes, including nested JOIN documents.
 
 ## UI features
 
 - Schema Map: edit table/column definitions and generate CREATE TABLE SQL.
 - Debug: step through actual tokens, AST, validation status and generated MongoDB commands.
+- Walkthrough: after compilation, watch tokens become an expandable AST, schema checks and generated
+  MongoDB commands. Includes Play/Pause, phase selection, Previous/Next and arrow-key navigation.
+  Autoplay is off when the browser requests reduced motion.
+- Error highlighting: lexical, syntax and semantic diagnostics underline the offending token, mark its
+  line and gutter, and offer a Go to error action. Missing input at EOF is marked with a caret.
 - Explain: inspect the generated execution plan.
 - History: local query history, safely rendered as text.
 - Demo execution and reset: temporary sample data, with stale output disabled after an edit.
 
 Query history is stored locally when browser storage is available. Schema changes are kept for the
 current page session; refresh restores the default map.
+
+### Review celebration
+
+Enter this valid SQL and click EXECUTE:
+
+```sql
+CREATE TABLE Dr_BASKARAN_P (
+    title TEXT,
+    compiler_power INT
+);
+```
+
+After successful compilation, the supplied portrait flips and travels around the screen with
+confetti, the message **DR. BASKARAN P — THE BEST COMPILER DESIGN TEACHER!**, and:
+
+```text
+✓ Knowledge: UNLIMITED
+✓ Syntax errors: Too scared to appear
+✓ Quiz marks: 10/20
+```
+
+The celebration closes after eight seconds or with Escape/Close, then returns focus to EXECUTE.
+Reduced-motion users see a stationary portrait. Only this CREATE TABLE AST triggers it; strings,
+comments, failed compilations, Debug and Walkthrough do not trigger the celebration.
 
 ## Static hosting / GitHub Pages
 
@@ -139,8 +171,12 @@ python -m unittest discover -s tests -v
 node --check public/script.js
 node --check public/pyodide_bridge.js
 node --check public/easter_eggs.js
+node --check public/professor_celebration.js
+node --check public/walkthrough.js
 ```
 
 Tests include comparisons against SQLite for boolean expressions, joins, grouping, null and
 empty-aggregate behavior; parser and semantic failures; CRUD; command restrictions; API session
 isolation/reset; path traversal and request validation; and CLI output/exit codes.
+Extended tests compare sorting, aliases, pagination, MIN/MAX and HAVING against SQLite and
+verify exact error spans, leading whitespace and EOF locations.

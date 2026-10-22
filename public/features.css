@@ -1,0 +1,146 @@
+/* Editor diagnostics */
+.editor-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.panel { min-width: 0; }
+.query-error[hidden] { display: none; }
+.query-error {
+    padding: 0.75rem 1rem; border-top: 2px solid var(--error);
+    background: #220b16; color: #ff9eb6; font-size: 0.9rem;
+    display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; align-items: center;
+}
+.query-error strong { flex-basis: 100%; }
+.query-error button {
+    border: 1px solid currentColor; padding: 0.4rem 0.6rem;
+    color: inherit; background: transparent; font: inherit; min-height: 36px;
+}
+.sql-error-line { background: rgba(255, 0, 60, 0.1); }
+.sql-error-token { text-decoration: underline wavy var(--error); text-decoration-thickness: 2px; text-underline-offset: 4px; background: rgba(255, 0, 60, 0.16); }
+.compiler-errors { width: 16px; }
+.sql-error-gutter { color: #ff9eb6; font-weight: bold; }
+.sql-error-eof { color: #ff9eb6; border-bottom: 2px solid var(--error); }
+
+/* Teacher celebration: a top-layer dialog keeps the controls usable. */
+.professor-celebration:not([open]), .walkthrough-dialog:not([open]) { display: none; }
+.professor-celebration, .walkthrough-dialog { color: var(--phosphor); font-family: var(--font-mono); }
+.professor-celebration *, .walkthrough-dialog * { cursor: auto; }
+.professor-celebration button, .walkthrough-dialog button { cursor: pointer; }
+.professor-celebration::backdrop, .walkthrough-dialog::backdrop { background: rgba(0, 8, 5, 0.88); }
+.professor-celebration {
+    width: 100vw; height: 100dvh; max-width: none; max-height: none; margin: 0; padding: 0;
+    border: 0; background: radial-gradient(ellipse at center, #172819, #050a08 70%); overflow: hidden;
+}
+.celebration-close {
+    position: absolute; top: 20px; right: 24px; z-index: 5;
+    border: 1px solid #ffd166; color: #ffd166; padding: 12px; background: #10160e; font: inherit;
+}
+.celebration-message {
+    position: absolute; z-index: 3; width: min(760px, 86vw); top: 22%; left: 50%; transform: translateX(-50%);
+    text-align: center; pointer-events: none;
+}
+.celebration-detection { color: #ffd166; font-size: clamp(14px, 1.7vw, 20px); margin-bottom: 24px; }
+.celebration-message h2 { font-family: var(--font-display); font-weight: normal; font-size: clamp(32px, 5.8vw, 76px); line-height: 1.1; color: #ffd166; }
+.celebration-message h2 span { display: block; color: #9fff87; font-size: 0.65em; margin-top: 12px; }
+.celebration-message pre { display: inline-block; margin-top: 28px; text-align: left; font: inherit; font-size: clamp(13px, 1.6vw, 20px); line-height: 1.9; color: #d1f5c7; }
+.celebration-hint { font-size: 12px; color: #acbba7; margin-top: 20px; }
+.celebration-message h2, .celebration-message pre { opacity: 0; transition: opacity 400ms, translate 400ms; translate: 0 12px; }
+.is-celebrating .celebration-message h2, .is-celebrating .celebration-message pre { opacity: 1; translate: 0 0; }
+.professor-photo {
+    position: absolute; top: 0; left: 0; width: clamp(110px, 13vw, 170px); padding: 6px;
+    background: #ffd166; border: 2px solid #fff1bd; box-shadow: 0 0 30px #ffd16666;
+    z-index: 2; opacity: 0;
+}
+.professor-photo img { display: block; width: 100%; height: auto; }
+.is-celebrating .professor-photo { opacity: 1; animation: professor-flight 7.2s ease-in-out both; }
+@keyframes professor-flight {
+    0% { transform: translate(calc(50vw - 85px), 64vh) scale(0.15) rotateY(180deg); }
+    12% { transform: translate(5vw, 16vh) scale(1) rotateY(360deg) rotate(-12deg); }
+    32% { transform: translate(calc(95vw - 170px), 58vh) rotateY(720deg) rotate(12deg); }
+    52% { transform: translate(6vw, 66vh) rotateY(1080deg) rotate(-10deg); }
+    75% { transform: translate(calc(95vw - 170px), 12vh) rotateY(1440deg) rotate(12deg); }
+    100% { transform: translate(calc(50vw - 85px), 72vh) rotateY(1800deg); }
+}
+.confetti { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.confetti i { position: absolute; left: var(--x); top: -24px; width: 8px; height: 16px; background: var(--color); animation: confetti-fall var(--duration) var(--delay) linear infinite; }
+@keyframes confetti-fall { to { transform: translate(50px, 110dvh) rotate(720deg); } }
+
+/* Animated compiler walkthrough */
+.walkthrough-dialog {
+    width: min(1100px, 94vw); height: min(820px, 94dvh); max-width: 94vw; max-height: 94dvh;
+    margin: auto; padding: 24px; border: 2px solid var(--phosphor); background: #07100b;
+    display: flex; flex-direction: column; gap: 14px; overflow: auto; text-shadow: none;
+}
+.walkthrough-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.walkthrough-heading p { font-size: 12px; letter-spacing: 2px; color: #a7c6af; }
+.walkthrough-heading h2 { font: normal clamp(30px, 4vw, 46px)/1 var(--font-display); }
+.walkthrough-control {
+    padding: 9px 13px; min-height: 44px; font: inherit; font-size: 14px;
+    border: 1px solid var(--phosphor-dim); background: #102019; color: #c0edc8;
+}
+.walkthrough-control:disabled { opacity: 0.4; cursor: default; }
+.walkthrough-control:hover:enabled { border-color: var(--phosphor); }
+.walkthrough-dialog button:focus-visible, .professor-celebration button:focus-visible {
+    outline: 2px solid #ffd166; outline-offset: 3px;
+}
+.walkthrough-source { padding: 10px 14px; max-height: 80px; flex-shrink: 0; overflow: auto; color: #b5d8c0; background: #0d1b13; font: 13px/1.5 var(--font-mono); white-space: pre-wrap; }
+.compiler-flow { list-style: none; display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; flex-shrink: 0; }
+.compiler-flow li { position: relative; }
+.compiler-flow li:not(:last-child)::after { content: '→'; position: absolute; top: 16px; right: -16px; color: #698a70; }
+.compiler-flow button {
+    display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px;
+    border: 1px solid #32573e; background: transparent; color: #b5d8c0; font: inherit; min-height: 50px;
+}
+.compiler-flow button span { font-size: 12px; color: #8baf96; }
+.compiler-flow .is-active { color: var(--phosphor); border-color: var(--phosphor); background: #152d1b; }
+.compiler-flow .is-complete { border-color: #5d966e; }
+.is-playing .compiler-flow li:has(.is-active)::after { color: var(--phosphor); animation: flow-pulse 800ms alternate infinite; }
+@keyframes flow-pulse { to { opacity: 0.4; transform: translateX(4px); } }
+.walkthrough-progress { height: 3px; background: #203b29; flex-shrink: 0; }
+.walkthrough-progress div { height: 100%; background: var(--phosphor); transform-origin: left; transition: transform 500ms; }
+.walkthrough-caption { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.walkthrough-caption h3 { font: normal 28px/1.1 var(--font-display); }
+#walkthrough-counter { font-size: 12px; color: #a7c6af; }
+#walkthrough-stage-description { color: #a7c6af; font-size: 14px; line-height: 1.5; }
+.walkthrough-stage { flex: 1; min-height: 160px; overflow: auto; border: 1px solid #32573e; padding: 18px; background: #09150e; }
+.stage-enter { animation: stage-enter 400ms ease-out both; }
+@keyframes stage-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.walkthrough-controls { display: flex; justify-content: space-between; gap: 12px; }
+.walkthrough-tokens { display: flex; flex-wrap: wrap; gap: 10px; }
+.walkthrough-token {
+    max-width: 100%; overflow-wrap: anywhere; display: flex; flex-direction: column; align-items: flex-start;
+    padding: 10px 12px; background: #0c2316; color: #d1f5c7; border: 1px solid #32573e; font: inherit;
+    animation: token-appear 350ms ease-out calc(var(--i) * 35ms) both;
+}
+.walkthrough-token small { font-size: 10px; letter-spacing: 1px; color: #80ac8e; }
+.walkthrough-token.is-selected { border-color: #ffd166; }
+@keyframes token-appear { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.walkthrough-inspection { color: #ffd166; font-size: 13px; margin-bottom: 14px; }
+.walkthrough-tree { margin-left: 14px; padding: 5px 0 5px 10px; border-left: 1px solid #32573e; overflow-wrap: anywhere; }
+.walkthrough-tree summary { cursor: pointer; color: #9fff87; }
+.walkthrough-leaf { margin-left: 18px; color: #a7c6af; font-size: 13px; }
+.validation-success { color: #9fff87; margin-bottom: 16px; }
+.walkthrough-schema { margin-block: 14px; }
+.walkthrough-schema h4 { color: #ffd166; margin-bottom: 6px; }
+.walkthrough-fields { display: flex; flex-wrap: wrap; gap: 8px; }
+.walkthrough-fields span { border: 1px solid #32573e; padding: 6px 10px; color: #b5d8c0; font-size: 13px; }
+.walkthrough-code { font: 13px/1.6 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; color: #d1f5c7; }
+.walkthrough-plan { margin: 10px 0 16px 22px; color: #a7c6af; font-size: 13px; }
+@media (max-width: 600px) {
+    .walkthrough-dialog { padding: 14px; gap: 10px; }
+    .compiler-flow { gap: 8px; }
+    .compiler-flow button { flex-direction: column; gap: 3px; padding: 8px 3px; font-size: 11px; }
+    .compiler-flow li::after { display: none; }
+    .walkthrough-heading h2 { font-size: 30px; }
+    .walkthrough-heading .walkthrough-control { font-size: 10px; padding: 6px; }
+    .walkthrough-source { font-size: 11px; }
+    .celebration-message { top: 18%; }
+    .celebration-message pre { white-space: pre-wrap; }
+    .walkthrough-stage { padding: 10px; }
+}
+@media (max-width: 800px) {
+    .editor-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .professor-photo, .confetti i, .stage-enter, .walkthrough-token, .compiler-flow li::after { animation: none !important; }
+    .confetti { display: none; }
+    .professor-photo { top: auto; bottom: 16px; left: calc(50% - 55px); width: 110px; }
+    .celebration-message h2, .celebration-message pre, .walkthrough-progress div { transition: none; translate: none; }
+}

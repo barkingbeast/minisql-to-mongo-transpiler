@@ -13,6 +13,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/theme/monokai.min.css">
     
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="features.css">
 </head>
 <body>
     <div class="crt-overlay"></div>
@@ -78,6 +79,7 @@
                     <span class="panel-title">> INPUT_QUERY.SQL</span>
                     <div>
                         <button id="debug-btn" class="retro-btn" title="Step through compiler phases">[ DEBUG ]</button>
+                        <button id="walkthrough-btn" class="retro-btn" title="Watch SQL travel through the compiler">[ WALKTHROUGH ]</button>
                         <button id="run-btn" class="retro-btn">[ EXECUTE ]</button>
                     </div>
                 </div>
@@ -87,6 +89,11 @@ FROM users
 JOIN orders ON users.id = orders.user_id 
 WHERE users.age >= 18 AND orders.status = 'COMPLETED' 
 GROUP BY users.name;</textarea>
+                </div>
+                <div id="query-error" class="query-error" role="alert" tabindex="-1" hidden>
+                    <strong id="query-error-title"></strong>
+                    <span id="query-error-message"></span>
+                    <button id="jump-error-btn" type="button">Go to error</button>
                 </div>
             </div>
 
@@ -118,6 +125,43 @@ GROUP BY users.name;</textarea>
             </div>
         </div>
     </main>
+
+    <dialog id="professor-celebration" class="professor-celebration" aria-labelledby="professor-message">
+        <button type="button" id="close-celebration" class="celebration-close" aria-label="Close celebration">[ CLOSE · ESC ]</button>
+        <div class="confetti" aria-hidden="true"></div>
+        <div class="professor-photo" aria-hidden="true"><img src="assets/dr-baskaran-p.png" alt="" width="182" height="220"></div>
+        <div class="celebration-message">
+            <p class="celebration-detection">Unusually high compiler knowledge detected…</p>
+            <h2 id="professor-message">DR. BASKARAN P <span>THE BEST COMPILER DESIGN TEACHER!</span></h2>
+            <pre>✓ Knowledge: UNLIMITED
+✓ Syntax errors: Too scared to appear
+✓ Quiz marks: 10/20</pre>
+            <p class="celebration-hint">Returning to the compiler in 8 seconds · Escape to close</p>
+        </div>
+    </dialog>
+
+    <dialog id="walkthrough-dialog" class="walkthrough-dialog" aria-labelledby="walkthrough-title">
+        <div class="walkthrough-heading">
+            <div><p>FOLLOW THE QUERY</p><h2 id="walkthrough-title">Inside the compiler</h2></div>
+            <button type="button" id="close-walkthrough" class="walkthrough-control" aria-label="Close walkthrough">[ CLOSE · ESC ]</button>
+        </div>
+        <pre id="walkthrough-source" class="walkthrough-source"></pre>
+        <ol class="compiler-flow" aria-label="Compiler phases">
+            <li><button type="button" data-phase="0"><span>01</span>Tokens</button></li>
+            <li><button type="button" data-phase="1"><span>02</span>AST</button></li>
+            <li><button type="button" data-phase="2"><span>03</span>Validation</button></li>
+            <li><button type="button" data-phase="3"><span>04</span>MongoDB</button></li>
+        </ol>
+        <div class="walkthrough-progress" aria-hidden="true"><div id="walkthrough-progress-fill"></div></div>
+        <div class="walkthrough-caption"><h3 id="walkthrough-stage-title"></h3><span id="walkthrough-counter" aria-live="polite"></span></div>
+        <p id="walkthrough-stage-description"></p>
+        <section id="walkthrough-stage" class="walkthrough-stage" aria-labelledby="walkthrough-stage-title" tabindex="0"></section>
+        <div class="walkthrough-controls">
+            <button type="button" id="walkthrough-prev" class="walkthrough-control">← Previous</button>
+            <button type="button" id="walkthrough-play" class="walkthrough-control">Pause</button>
+            <button type="button" id="walkthrough-next" class="walkthrough-control">Next →</button>
+        </div>
+    </dialog>
     
     <!-- Debugger Overlay -->
     <div id="debug-overlay" style="display:none; position:fixed; top:10%; left:10%; width:80%; height:80%; background:rgba(0,0,0,0.95); border:4px solid var(--accent); z-index:4000; flex-direction:column; padding:2rem; box-shadow: 0 0 50px rgba(0, 240, 255, 0.4);">
@@ -171,6 +215,8 @@ GROUP BY users.name;</textarea>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/javascript/javascript.min.js"></script>
     <script src="pyodide_bridge.js"></script>
     <script src="script.js"></script>
+    <script src="professor_celebration.js"></script>
+    <script src="walkthrough.js"></script>
     <script src="easter_eggs.js"></script>
 </body>
 </html>

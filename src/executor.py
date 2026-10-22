@@ -13,9 +13,9 @@ METHODS = {
 }
 OPERATORS = {
     '$expr', '$and', '$or', '$nor', '$not', '$eq', '$ne', '$gt', '$lt', '$gte', '$lte',
-    '$ifNull', '$literal', '$cond', '$sum', '$avg', '$arrayElemAt', '$in', '$exists',
+    '$ifNull', '$literal', '$cond', '$sum', '$avg', '$min', '$max', '$arrayElemAt', '$in', '$exists',
 }
-STAGES = {'$match', '$project', '$group', '$lookup', '$unwind', '$facet'}
+STAGES = {'$match', '$project', '$group', '$lookup', '$unwind', '$facet', '$addFields', '$sort', '$skip', '$limit'}
 
 
 def check_operators(value):
@@ -39,7 +39,13 @@ def check_pipeline(pipeline, depth=0):
         name, value = next(iter(stage.items()))
         if name not in STAGES:
             raise ValueError(f'Unsupported aggregation stage: {name}')
-        if name == '$facet':
+        if name in ('$skip', '$limit'):
+            if type(value) is not int or value < (1 if name == '$limit' else 0) or value > 2_147_483_647:
+                raise ValueError(f'Invalid {name} value')
+        elif name == '$sort':
+            if not isinstance(value, dict) or not value or any(type(v) is not int or v not in (1, -1) for v in value.values()):
+                raise ValueError('$sort expects fields with direction 1 or -1')
+        elif name == '$facet':
             if not isinstance(value, dict):
                 raise ValueError('$facet expects an object')
             for nested in value.values():

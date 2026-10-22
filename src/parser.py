@@ -1,19 +1,47 @@
 """Recursive descent parser. Boolean precedence: NOT > AND > OR."""
 from ast_nodes import (SelectQuery, JoinClause, InsertQuery, UpdateQuery, DeleteQuery,
                        CreateTableQuery, BinaryOp, UnaryOp, Identifier, Literal, FunctionCall)
+from diagnostics import CompileError
 
 
 class Parser:
-    def __init__(self, tokens):
+    def __init__(self, tokens, source=None):
         self.tokens, self.pos = tokens, 0
+        self.source = source
 
     def current(self):
         return self.tokens[self.pos] if self.pos < len(self.tokens) else None
 
     def error(self, message):
-        token = self.current() or (self.tokens[-1] if self.tokens else None)
-        location = f' at line {token.line}, column {token.column}' if token else ''
-        raise SyntaxError(message + location)
+        token = self.current()
+        if token:
+            location = self.location(token)
+        elif self.source is not None:
+            line = self.source.count('\n') + 1
+            column = len(self.source.rsplit('\n', 1)[-1]) + 1
+            location = {'line': line, 'column': column, 'end_line': line, 'end_column': column}
+        elif self.tokens:
+            last = self.tokens[-1]
+            location = {'line': last.end_line, 'column': last.end_column,
+                        'end_line': last.end_line, 'end_column': last.end_column}
+        else:
+            location = None
+        raise CompileError(message, 'syntax', location)
+
+    @staticmethod
+    def location(token):
+        return {'line': token.line, 'column': token.column,
+                'end_line': token.end_line, 'end_column': token.end_column}
+
+    def attach(self, node, token):
+        node.location = self.location(token)
+        return node
+
+    @staticmethod
+    def binary(left, op, right):
+        node = BinaryOp(left, op, right)
+        node.location = getattr(left, 'location', None)
+        return node
 
     def consume(self, expected_type=None, expected_value=None):
         token = self.current()
@@ -44,12 +72,13 @@ class Parser:
         return self.match('PUNCTUATION', value)
 
     def identifier(self, qualified=True):
-        name = self.consume('IDENTIFIER').value
+        token = self.consume('IDENTIFIER')
+        name = token.value
         if any(part.startswith('__minisql_') for part in name.split('.')):
-            self.error('Names starting with __minisql_ are reserved for compiler fields')
+            raise CompileError('Names starting with __minisql_ are reserved for compiler fields', 'syntax', self.location(token))
         if not qualified and '.' in name:
             self.error('Expected an unqualified name')
-        return Identifier(name)
+        return self.attach(Identifier(name), token)
 
     def parse(self):
         statements = []
@@ -70,13 +99,14 @@ class Parser:
                    'CREATE': self.parse_create}
         if token.type != 'KEYWORD' or token.value not in methods:
             self.error(f'Unexpected token {token.value!r}')
-        return methods[token.value]()
+        return self.attach(methods[token.value](), token)
 
     def parse_select(self):
         self.consume('KEYWORD', 'SELECT')
-        fields = [Identifier('*')] if self.punct('*') else [self.parse_field()]
+        star = self.current()
+        fields = [self.attach(Identifier('*'), star)] if self.punct('*') else [self.parse_select_field()]
         while self.punct(','):
-            fields.append(self.parse_field())
+            fields.append(self.parse_select_field())
         self.consume('KEYWORD', 'FROM')
         table = self.identifier(False)
         joins = []
@@ -91,16 +121,46 @@ class Parser:
         if self.keyword('GROUP'):
             self.consume('KEYWORD', 'BY')
             group = self.identifier()
-        return SelectQuery(fields, table, where, group, joins)
+        node = SelectQuery(fields, table, where, group, joins)
+        if self.keyword('HAVING'):
+            node.having = self.parse_condition(aggregates=True)
+        if self.keyword('ORDER'):
+            self.consume('KEYWORD', 'BY')
+            while True:
+                expression = self.parse_field()
+                direction = -1 if self.keyword('DESC') else 1
+                if direction == 1:
+                    self.keyword('ASC')
+                node.order_by.append({'expression': expression, 'direction': direction})
+                if not self.punct(','):
+                    break
+        if self.keyword('LIMIT'):
+            node.limit = self.parse_nonnegative_integer('LIMIT')
+            if self.keyword('OFFSET'):
+                node.offset = self.parse_nonnegative_integer('OFFSET')
+        return node
+
+    def parse_nonnegative_integer(self, clause):
+        token = self.current()
+        if token is None or token.type != 'NUMBER' or type(token.value) is not int or not 0 <= token.value <= 2_147_483_647:
+            self.error(f'{clause} requires an integer between 0 and 2147483647')
+        return self.consume().value
+
+    def parse_select_field(self):
+        field = self.parse_field()
+        if self.keyword('AS'):
+            field.alias = self.identifier(False).name
+        return field
 
     def parse_field(self):
         token = self.current()
-        if token and token.type == 'KEYWORD' and token.value in ('COUNT', 'SUM', 'AVG'):
+        if token and token.type == 'KEYWORD' and token.value in ('COUNT', 'SUM', 'AVG', 'MIN', 'MAX'):
             name = self.consume().value
             self.consume('PUNCTUATION', '(')
-            arg = Identifier('*') if self.punct('*') else self.identifier()
+            star = self.current()
+            arg = self.attach(Identifier('*'), star) if self.punct('*') else self.identifier()
             self.consume('PUNCTUATION', ')')
-            return FunctionCall(name, arg)
+            return self.attach(FunctionCall(name, arg), token)
         return self.identifier()
 
     def parse_insert(self):
@@ -151,8 +211,10 @@ class Parser:
         self.consume('PUNCTUATION', '(')
         columns = []
         while True:
-            name = self.identifier(False).name
-            kind = self.consume('IDENTIFIER').value.lower()
+            column = self.identifier(False)
+            name = column.name
+            type_token = self.consume('IDENTIFIER')
+            kind = type_token.value.lower()
             if self.punct('('):
                 size = self.consume('NUMBER').value
                 if type(size) is not int or size <= 0:
@@ -160,7 +222,7 @@ class Parser:
                 self.consume('PUNCTUATION', ')')
                 if kind not in ('varchar', 'char'):
                     self.error('Only CHAR and VARCHAR accept a size')
-            columns.append({'name': name, 'type': kind})
+            columns.append({'name': name, 'type': kind, 'location': column.location, 'type_location': self.location(type_token)})
             if not self.punct(','):
                 break
         self.consume('PUNCTUATION', ')')
@@ -169,45 +231,48 @@ class Parser:
     def parse_assignment(self):
         column = self.identifier()
         self.consume('OPERATOR', '=')
-        return BinaryOp(column, '=', self.parse_literal())
+        return self.binary(column, '=', self.parse_literal())
 
-    def parse_condition(self):
-        node = self.parse_and()
+    def parse_condition(self, aggregates=False):
+        node = self.parse_and(aggregates)
         while self.keyword('OR'):
-            node = BinaryOp(node, 'OR', self.parse_and())
+            node = self.binary(node, 'OR', self.parse_and(aggregates))
         return node
 
-    def parse_and(self):
-        node = self.parse_not()
+    def parse_and(self, aggregates=False):
+        node = self.parse_not(aggregates)
         while self.keyword('AND'):
-            node = BinaryOp(node, 'AND', self.parse_not())
+            node = self.binary(node, 'AND', self.parse_not(aggregates))
         return node
 
-    def parse_not(self):
+    def parse_not(self, aggregates=False):
+        token = self.current()
         if self.keyword('NOT'):
-            return UnaryOp('NOT', self.parse_not())
+            return self.attach(UnaryOp('NOT', self.parse_not(aggregates)), token)
         if self.punct('('):
-            node = self.parse_condition()
+            node = self.parse_condition(aggregates)
             self.consume('PUNCTUATION', ')')
             return node
-        left = self.parse_literal_or_id()
+        left = self.parse_literal_or_id(aggregates)
         if self.keyword('IS'):
             op = 'IS NOT' if self.keyword('NOT') else 'IS'
             self.consume('KEYWORD', 'NULL')
-            return BinaryOp(left, op, Literal(None))
+            return self.binary(left, op, Literal(None))
         op = self.consume('OPERATOR').value
         op = {'==': '=', '<>': '!='}.get(op, op)
-        return BinaryOp(left, op, self.parse_literal_or_id())
+        return self.binary(left, op, self.parse_literal_or_id(aggregates))
 
     def parse_literal(self):
         token = self.current()
         if token and token.type in ('STRING', 'NUMBER'):
-            return Literal(self.consume().value)
+            return self.attach(Literal(self.consume().value), token)
         if token and token.type == 'KEYWORD' and token.value in ('NULL', 'TRUE', 'FALSE'):
-            return Literal({'NULL': None, 'TRUE': True, 'FALSE': False}[self.consume().value])
+            return self.attach(Literal({'NULL': None, 'TRUE': True, 'FALSE': False}[self.consume().value]), token)
         self.error('Expected a literal')
 
-    def parse_literal_or_id(self):
+    def parse_literal_or_id(self, aggregates=False):
+        if aggregates and self.current() and self.current().value in ('COUNT', 'SUM', 'AVG', 'MIN', 'MAX') and self.current().type == 'KEYWORD':
+            return self.parse_field()
         if self.current() and self.current().type == 'IDENTIFIER':
             return self.identifier()
         return self.parse_literal()

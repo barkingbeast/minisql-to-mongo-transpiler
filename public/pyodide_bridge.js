@@ -1,6 +1,6 @@
 // Shared Python compiler and isolated mock execution for static hosting.
 (function () {
-    const SRC_FILES = ['ast_nodes.py', 'lexer.py', 'parser.py', 'semantic.py', 'codegen.py', 'compiler.py', 'executor.py'];
+    const SRC_FILES = ['ast_nodes.py', 'lexer.py', 'parser.py', 'semantic.py', 'codegen.py', 'compiler.py', 'executor.py', 'diagnostics.py', 'query_utils.py'];
     let enginePromise = null;
     let executionPromise = null;
     let queue = Promise.resolve();

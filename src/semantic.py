@@ -1,6 +1,8 @@
 """Schema validation and identifier resolution without connecting to a database."""
 from ast_nodes import (SelectQuery, InsertQuery, UpdateQuery, DeleteQuery, CreateTableQuery,
                        BinaryOp, UnaryOp, Identifier, Literal, FunctionCall)
+from diagnostics import CompileError, diagnostic_node
+from query_utils import output_label, aggregate_key, all_aggregates
 
 TYPE_ALIASES = {
     'int': 'int', 'integer': 'int', 'bigint': 'int',
@@ -33,10 +35,11 @@ class SemanticAnalyzer:
         for node in nodes:
             getattr(self, f'visit_{type(node).__name__}')(node)
 
-    def table(self, name):
+    def table(self, name, node=None):
         if self.schema and name not in self.schema:
-            raise ValueError(f"Table '{name}' does not exist in the schema")
+            raise CompileError(f"Table '{name}' does not exist in the schema", 'semantic', getattr(node, 'location', None))
 
+    @diagnostic_node
     def resolve(self, identifier, tables):
         name = identifier.name
         if name == '*':
@@ -59,7 +62,7 @@ class SemanticAnalyzer:
         return self.schema.get(table, {}).get(column)
 
     @staticmethod
-    def check_value(kind, value, name):
+    def check_value(kind, value, name, node=None):
         if value is None or kind is None:
             return
         valid = ((kind == 'int' and type(value) is int) or
@@ -67,8 +70,9 @@ class SemanticAnalyzer:
                  (kind == 'text' and isinstance(value, str)) or
                  (kind == 'bool' and type(value) is bool))
         if not valid:
-            raise TypeError(f"Type mismatch: Column '{name}' expects {kind}, got {value!r}")
+            raise CompileError(f"Type mismatch: Column '{name}' expects {kind}, got {value!r}", 'semantic', getattr(node, 'location', None))
 
+    @diagnostic_node
     def check_where(self, node, tables):
         if node is None:
             return
@@ -81,29 +85,36 @@ class SemanticAnalyzer:
             left_type = self.resolve(node.left, tables) if isinstance(node.left, Identifier) else None
             right_type = self.resolve(node.right, tables) if isinstance(node.right, Identifier) else None
             if isinstance(node.right, Literal) and isinstance(node.left, Identifier):
-                self.check_value(left_type, node.right.value, node.left.name)
+                self.check_value('number' if left_type == 'int' else left_type, node.right.value, node.left.name, node.right)
             elif isinstance(node.left, Literal) and isinstance(node.right, Identifier):
-                self.check_value(right_type, node.left.value, node.right.name)
+                self.check_value('number' if right_type == 'int' else right_type, node.left.value, node.right.name, node.left)
             elif left_type and right_type and left_type != right_type:
                 if {left_type, right_type} != {'int', 'number'}:
                     raise TypeError('Type mismatch between compared columns')
 
+    @diagnostic_node
     def visit_CreateTableQuery(self, node):
         name = node.table.name
         if name in self.created:
             raise ValueError(f"Table '{name}' is defined more than once")
-        names = [c['name'] for c in node.columns]
-        if len(names) != len(set(names)):
-            raise ValueError(f"Duplicate column in table '{name}'")
-        self.schema[name] = {c['name']: self.normalize_type(c['type']) for c in node.columns}
+        columns = {}
+        for column in node.columns:
+            if column['name'] in columns:
+                raise CompileError(f"Duplicate column in table '{name}'", 'semantic', column.get('location'))
+            try:
+                columns[column['name']] = self.normalize_type(column['type'])
+            except ValueError as error:
+                raise CompileError(str(error), 'semantic', column.get('type_location')) from error
+        self.schema[name] = columns
         self.created.add(name)
 
+    @diagnostic_node
     def visit_SelectQuery(self, node):
         tables = [node.table.name]
-        self.table(tables[0])
+        self.table(tables[0], node.table)
         for join in node.joins:
             table = join.table.name
-            self.table(table)
+            self.table(table, join.table)
             if table in tables:
                 raise ValueError('Self joins and repeated JOIN tables require aliases, which are not supported')
             condition = join.condition
@@ -120,31 +131,89 @@ class SemanticAnalyzer:
         self.check_where(node.where_clause, tables)
         if node.group_by:
             self.resolve(node.group_by, tables)
-        aggregates = any(isinstance(f, FunctionCall) for f in node.fields)
-        labels = []
+        aggregates = list(all_aggregates(node))
+        for aggregate in aggregates:
+            self.validate_aggregate(aggregate, tables)
+        grouped = bool(aggregates or node.group_by)
+        if node.having and not grouped:
+            raise ValueError('HAVING requires GROUP BY or an aggregate function')
+        labels = {}
         for field in node.fields:
-            if isinstance(field, FunctionCall):
-                kind = self.resolve(field.arg, tables)
-                if field.arg.name == '*' and field.name != 'COUNT':
-                    raise ValueError('Only COUNT accepts *')
-                if field.name in ('SUM', 'AVG') and kind not in (None, 'int', 'number'):
-                    raise TypeError(f'Type mismatch: {field.name} requires a numeric column')
-                label = f'{field.name.lower()}_{field.arg.name.replace(".", "_").replace("*", "all")}'
-            else:
+            if not isinstance(field, FunctionCall):
                 self.resolve(field, tables)
-                if aggregates or node.group_by:
-                    if not node.group_by or getattr(field, 'resolved_name', None) != node.group_by.resolved_name:
-                        raise ValueError('Every selected non-aggregate column must appear in GROUP BY')
-                label = field.name.replace('.', '_') if node.joins else field.name.split('.')[-1]
+                if grouped and (not node.group_by or getattr(field, 'resolved_name', None) != node.group_by.resolved_name):
+                    raise CompileError('Every selected non-aggregate column must appear in GROUP BY', 'semantic', field.location)
+            label = output_label(field, bool(node.joins))
             if label in labels:
-                raise ValueError(f'Duplicate output field: {label}')
-            labels.append(label)
+                raise CompileError(f'Duplicate output field: {label}', 'semantic', field.location)
+            labels[label] = field
         if len(node.fields) > 1 and any(isinstance(f, Identifier) and f.name == '*' for f in node.fields):
             raise ValueError('SELECT * cannot be mixed with other fields')
+        self.check_output_condition(node.having, node, tables, labels)
+        ordered = set()
+        for order in node.order_by:
+            expression = order['expression']
+            self.output_operand(expression, node, tables, labels, grouped)
+            key = ('aggregate', aggregate_key(expression)) if isinstance(expression, FunctionCall) else (
+                getattr(expression, 'aggregate_reference', None) or getattr(expression, 'resolved_name', expression.name))
+            if key in ordered:
+                raise CompileError('Duplicate ORDER BY expression', 'semantic', expression.location)
+            ordered.add(key)
 
+    @diagnostic_node
+    def validate_aggregate(self, field, tables):
+        kind = self.resolve(field.arg, tables)
+        if field.arg.name == '*' and field.name != 'COUNT':
+            raise ValueError('Only COUNT accepts *')
+        if field.name in ('SUM', 'AVG') and kind not in (None, 'int', 'number'):
+            raise TypeError(f'Type mismatch: {field.name} requires a numeric column')
+        return 'int' if field.name == 'COUNT' else ('number' if field.name in ('SUM', 'AVG') else kind)
+
+    @diagnostic_node
+    def output_operand(self, field, query, tables, labels, grouped):
+        if isinstance(field, Literal):
+            return None
+        if isinstance(field, FunctionCall):
+            return self.validate_aggregate(field, tables)
+        reference = labels.get(field.name) if '.' not in field.name else None
+        if reference is not None:
+            if isinstance(reference, FunctionCall):
+                field.aggregate_reference = aggregate_key(reference)
+                return self.validate_aggregate(reference, tables)
+            field.resolved_name = reference.resolved_name
+            table, column = reference.resolved_name.split('.', 1)
+            kind = self.schema.get(table, {}).get(column)
+        else:
+            kind = self.resolve(field, tables)
+        if grouped:
+            if not query.group_by or getattr(field, 'resolved_name', None) != query.group_by.resolved_name:
+                raise ValueError('Post-group columns must be a GROUP BY field or an aggregate alias')
+            field.group_reference = True
+        return kind
+
+    @diagnostic_node
+    def check_output_condition(self, condition, query, tables, labels):
+        if condition is None:
+            return
+        if isinstance(condition, UnaryOp):
+            return self.check_output_condition(condition.operand, query, tables, labels)
+        if condition.op in ('AND', 'OR'):
+            self.check_output_condition(condition.left, query, tables, labels)
+            self.check_output_condition(condition.right, query, tables, labels)
+            return
+        left_type = self.output_operand(condition.left, query, tables, labels, True)
+        right_type = self.output_operand(condition.right, query, tables, labels, True)
+        if isinstance(condition.right, Literal):
+            self.check_value('number' if left_type == 'int' else left_type, condition.right.value, 'HAVING expression', condition.right)
+        elif isinstance(condition.left, Literal):
+            self.check_value('number' if right_type == 'int' else right_type, condition.left.value, 'HAVING expression', condition.left)
+        elif left_type and right_type and left_type != right_type and {left_type, right_type} != {'int', 'number'}:
+            raise TypeError('Type mismatch between HAVING operands')
+
+    @diagnostic_node
     def visit_InsertQuery(self, node):
         name = node.table.name
-        self.table(name)
+        self.table(name, node.table)
         if not node.columns:
             if name not in self.schema:
                 raise ValueError('INSERT without columns requires a table definition in the schema')
@@ -157,11 +226,12 @@ class SemanticAnalyzer:
             if len(row) != len(node.columns):
                 raise ValueError(f'Column count ({len(node.columns)}) does not match value count ({len(row)})')
             for column, kind, value in zip(node.columns, kinds, row):
-                self.check_value(kind, value.value, column.name)
+                self.check_value(kind, value.value, column.name, value)
 
+    @diagnostic_node
     def visit_UpdateQuery(self, node):
         name = node.table.name
-        self.table(name)
+        self.table(name, node.table)
         assigned = set()
         for assignment in node.set_clause:
             kind = self.resolve(assignment.left, [name])
@@ -169,9 +239,10 @@ class SemanticAnalyzer:
             if column in assigned:
                 raise ValueError(f'Duplicate assignment for column {column}')
             assigned.add(column)
-            self.check_value(kind, assignment.right.value, column)
+            self.check_value(kind, assignment.right.value, column, assignment.right)
         self.check_where(node.where_clause, [name])
 
+    @diagnostic_node
     def visit_DeleteQuery(self, node):
-        self.table(node.table.name)
+        self.table(node.table.name, node.table)
         self.check_where(node.where_clause, [node.table.name])

@@ -21,6 +21,10 @@ class SelectQuery(ASTNode):
         self.where_clause = where_clause
         self.group_by = group_by
         self.joins = joins or []
+        self.having = None
+        self.order_by = []
+        self.limit = None
+        self.offset = 0
 
 class JoinClause(ASTNode):
     def __init__(self, table, condition):

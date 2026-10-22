@@ -1,6 +1,7 @@
 """Generate JSON-argument MongoDB shell commands from validated AST nodes."""
 import json
 from ast_nodes import UnaryOp, Identifier, FunctionCall
+from query_utils import output_label, aggregate_key, all_aggregates
 
 
 class CodeGenerator:
@@ -22,6 +23,13 @@ class CodeGenerator:
         return column if table == base else f'{alias}.{column}'
 
     def operand(self, node, base):
+        if getattr(self, 'post_group', False):
+            if isinstance(node, FunctionCall):
+                return '$' + self.aggregate_fields[aggregate_key(node)]
+            if getattr(node, 'aggregate_reference', None):
+                return '$' + self.aggregate_fields[node.aggregate_reference]
+            if getattr(node, 'group_reference', False):
+                return {'$ifNull': ['$_id', None]}
         if isinstance(node, Identifier):
             return {'$ifNull': ['$' + self.path(node, base), None]}
         # $literal prevents strings starting with $ from becoming field references.
@@ -48,18 +56,17 @@ class CodeGenerator:
     def parse_where(self, node, base=''):
         return {'$expr': self.expression(node, base)} if node else {}
 
-    @staticmethod
-    def label(field, joined=False):
-        if isinstance(field, FunctionCall):
-            return f'{field.name.lower()}_{field.arg.name.replace(".", "_").replace("*", "all")}'
-        return field.name.replace('.', '_') if joined else field.name.split('.')[-1]
+    label = staticmethod(output_label)
 
     def visit_SelectQuery(self, node):
         self.join_aliases = {}
+        self.post_group = False
         base = node.table.name
         explain = [f"Scan collection '{base}'"]
-        aggregation = bool(node.joins or node.group_by or any(isinstance(f, FunctionCall) for f in node.fields))
-        if not aggregation:
+        aggregates = list(all_aggregates(node))
+        grouped = bool(node.group_by or aggregates)
+        extended = node.order_by or node.limit is not None or any(getattr(f, 'alias', None) for f in node.fields)
+        if not (node.joins or grouped or extended):
             projection = {}
             if node.fields[0].name != '*':
                 projection = {self.path(f, base): 1 for f in node.fields}
@@ -76,61 +83,85 @@ class CodeGenerator:
             if left.name.split('.')[0] == join.table.name:
                 left, right = right, left
             joined = join.table.name
-            # A temporary array avoids overwriting an existing base-table column.
             alias = '__minisql_' + joined
             pipeline.extend([
                 {'$lookup': {'from': joined, 'localField': self.path(left, base),
                              'foreignField': right.name.split('.', 1)[1], 'as': alias}},
                 {'$unwind': '$' + alias},
             ])
-            # Rewrite the joined table prefix to its actual array alias.
             self.join_aliases[joined] = alias
             pipeline.append({'$match': {'$expr': {'$and': [
                 {'$ne': [{'$ifNull': ['$' + self.path(left, base), None]}, None]},
                 {'$ne': [{'$ifNull': ['$' + alias + '.' + right.name.split('.', 1)[1], None]}, None]},
             ]}}})
             explain.append(f"INNER JOIN '{joined}' using $lookup and $unwind")
-        # All joined field paths use aliases, including joins to earlier joined tables.
         if node.where_clause:
             pipeline.append({'$match': self.parse_where(node.where_clause, base)})
-        grouped = bool(node.group_by or any(isinstance(f, FunctionCall) for f in node.fields))
+            explain.append('Apply WHERE before grouping')
         if grouped:
             group = {'_id': self.operand(node.group_by, base) if node.group_by else None}
-            project = {'_id': 0}
+            normalize = {'_id': 1}
             defaults = {}
-            for index, field in enumerate(node.fields):
-                label = self.label(field, bool(node.joins))
-                if isinstance(field, FunctionCall):
-                    value = self.operand(field.arg, base) if field.arg.name != '*' else None
-                    if field.name == 'COUNT':
-                        group[label] = {'$sum': 1 if field.arg.name == '*' else {'$cond': [{'$ne': [value, None]}, 1, 0]}}
-                        defaults[label] = 0
-                    else:
-                        group[label] = {'$' + field.name.lower(): value}
-                        defaults[label] = None
-                        if field.name == 'SUM':
-                            count_label = f'__minisql_nonnull_{index}'
-                            group[count_label] = {'$sum': {'$cond': [{'$ne': [value, None]}, 1, 0]}}
-                            project[label] = {'$cond': [{'$gt': ['$' + count_label, 0]}, '$' + label, None]}
-                            continue
-                    project[label] = 1
+            self.aggregate_fields = {}
+            for field in aggregates:
+                key = aggregate_key(field)
+                if key in self.aggregate_fields:
+                    continue
+                internal = f'__minisql_agg_{len(self.aggregate_fields)}'
+                self.aggregate_fields[key] = internal
+                value = self.operand(field.arg, base) if field.arg.name != '*' else None
+                defaults[internal] = 0 if field.name == 'COUNT' else None
+                if field.name == 'COUNT':
+                    group[internal] = {'$sum': 1 if field.arg.name == '*' else {'$cond': [{'$ne': [value, None]}, 1, 0]}}
+                    normalize[internal] = 1
                 else:
-                    project[label] = '$_id'
+                    group[internal] = {'$' + field.name.lower(): value}
+                    normalize[internal] = 1
+                    if field.name == 'SUM':
+                        count = internal + '_nonnull'
+                        group[count] = {'$sum': {'$cond': [{'$ne': [value, None]}, 1, 0]}}
+                        normalize[internal] = {'$cond': [{'$gt': ['$' + count, 0]}, '$' + internal, None]}
+            stages = [{'$group': group}, {'$project': normalize}]
             if node.group_by:
-                pipeline.extend([{'$group': group}, {'$project': project}])
+                pipeline.extend(stages)
             else:
-                # A facet preserves the one-row SQL aggregate result even on an empty input.
                 pipeline.extend([
-                    {'$facet': {'stats': [{'$group': group}, {'$project': project}]}},
+                    {'$facet': {'stats': stages}},
                     {'$project': {'_id': 0, **{
-                        label: {'$ifNull': [{'$arrayElemAt': ['$stats.' + label, 0]}, default]}
-                        for label, default in defaults.items()}}},
+                        name: {'$ifNull': [{'$arrayElemAt': ['$stats.' + name, 0]}, default]}
+                        for name, default in defaults.items()}}},
                 ])
-            explain.append('Group rows and compute SQL aggregates (COUNT ignores NULL columns)')
+            self.post_group = True
+            explain.append('Group rows and calculate aggregates with SQL NULL semantics')
+            if node.having:
+                pipeline.append({'$match': self.parse_where(node.having, base)})
+                explain.append('Apply HAVING to aggregate results')
+        sort_fields = {}
+        for index, order in enumerate(node.order_by):
+            sort_fields[f'__minisql_sort_{index}'] = self.operand(order['expression'], base)
+        if sort_fields:
+            pipeline.append({'$addFields': sort_fields})
+            pipeline.append({'$sort': {name: order['direction'] for name, order in zip(sort_fields, node.order_by)}})
+            explain.append('Sort rows using ORDER BY')
+        if node.offset:
+            pipeline.append({'$skip': node.offset})
+            explain.append(f'Skip {node.offset} rows')
+        if node.limit is not None:
+            pipeline.append({'$limit': node.limit} if node.limit else {'$match': {'$expr': {'$literal': False}}})
+            explain.append(f'Return at most {node.limit} rows')
+        if grouped:
+            project = {'_id': 0}
+            for field in node.fields:
+                value = '$' + self.aggregate_fields[aggregate_key(field)] if isinstance(field, FunctionCall) else '$_id'
+                project[output_label(field, bool(node.joins))] = value
+            pipeline.append({'$project': project})
         elif node.fields[0].name != '*':
             pipeline.append({'$project': {'_id': 0, **{
-                self.label(f, bool(node.joins)): '$' + self.path(f, base) for f in node.fields}}})
+                output_label(field, bool(node.joins)): self.operand(field, base) for field in node.fields}}})
+        elif sort_fields:
+            pipeline.append({'$project': {name: 0 for name in sort_fields}})
         query = self.command(base, 'aggregate', pipeline)
+        self.post_group = False
         self.join_aliases = {}
         return query, explain
 

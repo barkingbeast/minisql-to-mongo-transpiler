@@ -28,6 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Debugger & Explainer
     const debugBtn = document.getElementById('debug-btn');
+    const walkthroughBtn = document.getElementById('walkthrough-btn');
     const explainBtn = document.getElementById('explain-btn');
     const explainModal = document.getElementById('explain-modal');
     const closeExplainBtn = document.getElementById('close-explain-btn');
@@ -47,16 +48,83 @@ document.addEventListener('DOMContentLoaded', () => {
     let schemaRevision = 0;
     let busy = false;
     let executing = false;
+    let currentCompilation = null;
+    let diagnostic = null;
+    let errorMark = null;
+    let errorLine = null;
+    const errorPanel = document.getElementById('query-error');
     liveRunBtn.disabled = true;
     resetDbBtn.disabled = true;
     explainBtn.disabled = true;
+    walkthroughBtn.disabled = true;
 
     // CodeMirror Initialization
     const sqlEditor = CodeMirror.fromTextArea(inputArea, {
         mode: "text/x-sql",
         theme: "monokai",
         lineNumbers: true,
+        gutters: ['CodeMirror-linenumbers', 'compiler-errors'],
         viewportMargin: Infinity
+    });
+
+    function clearDiagnostic() {
+        if (errorMark) errorMark.clear();
+        if (errorLine !== null) {
+            sqlEditor.removeLineClass(errorLine, 'background', 'sql-error-line');
+            sqlEditor.setGutterMarker(errorLine, 'compiler-errors', null);
+        }
+        errorMark = null;
+        errorLine = null;
+        diagnostic = null;
+        errorPanel.hidden = true;
+        sqlEditor.getInputField().removeAttribute('aria-invalid');
+        sqlEditor.getInputField().removeAttribute('aria-describedby');
+    }
+
+    function showDiagnostic(info, fallback) {
+        clearDiagnostic();
+        diagnostic = info;
+        document.getElementById('query-error-title').textContent = info ?
+            `${info.phase.toUpperCase()} · Line ${info.line}, column ${info.column}` : 'COMPILATION ERROR';
+        document.getElementById('query-error-message').textContent = info?.message || fallback;
+        const jump = document.getElementById('jump-error-btn');
+        jump.hidden = !info;
+        errorPanel.hidden = false;
+        sqlEditor.getInputField().setAttribute('aria-invalid', 'true');
+        sqlEditor.getInputField().setAttribute('aria-describedby', 'query-error-message');
+        if (info) {
+            const clip = (line, column) => {
+                const row = Math.max(0, Math.min(sqlEditor.lineCount() - 1, line - 1));
+                return { line: row, ch: Math.max(0, Math.min(sqlEditor.getLine(row).length, column - 1)) };
+            };
+            const from = clip(info.line, info.column);
+            const to = clip(info.end_line, info.end_column);
+            errorLine = from.line;
+            sqlEditor.addLineClass(errorLine, 'background', 'sql-error-line');
+            const gutter = document.createElement('span');
+            gutter.textContent = '!';
+            gutter.title = info.message;
+            gutter.className = 'sql-error-gutter';
+            sqlEditor.setGutterMarker(errorLine, 'compiler-errors', gutter);
+            if (from.line === to.line && from.ch === to.ch) {
+                const caret = document.createElement('span');
+                caret.className = 'sql-error-eof';
+                caret.textContent = '▏';
+                caret.title = info.message;
+                errorMark = sqlEditor.setBookmark(from, { widget: caret });
+            } else {
+                errorMark = sqlEditor.markText(from, to, { className: 'sql-error-token', title: info.message });
+            }
+            sqlEditor.scrollIntoView(from, 60);
+        }
+        errorPanel.focus({ preventScroll: true });
+    }
+
+    document.getElementById('jump-error-btn').addEventListener('click', () => {
+        if (!diagnostic) return;
+        sqlEditor.focus();
+        sqlEditor.setCursor({ line: diagnostic.line - 1, ch: diagnostic.column - 1 });
+        sqlEditor.scrollIntoView(sqlEditor.getCursor(), 60);
     });
     
     const mqlEditor = CodeMirror.fromTextArea(mqlOutput, {
@@ -259,7 +327,7 @@ document.addEventListener('DOMContentLoaded', () => {
         html += `<div class="ast-children">`;
         
         for (const key in node) {
-            if (key === 'type') continue;
+            if (key === 'type' || key === 'location' || key === 'type_location') continue;
             
             html += `<div class="ast-prop"><strong>${escapeHTML(key)}:</strong> `;
             if (Array.isArray(node[key])) {
@@ -283,6 +351,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Execution
     function invalidateOutput() {
+        clearDiagnostic();
+        currentCompilation = null;
+        walkthroughBtn.disabled = true;
         schemaRevision++;
         compiledSQL = null;
         currentTokens = [];
@@ -297,14 +368,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     sqlEditor.on('change', invalidateOutput);
 
-    async function transpileQuery() {
+    async function transpileQuery(event) {
         if (busy || executing) return false;
+        const source = event?.currentTarget === runBtn ? 'execute' : 'tool';
         
-        const query = sqlEditor.getValue().trim();
-        if (!query) return false;
+        const query = sqlEditor.getValue();
+        if (!query.trim()) return false;
         const revision = schemaRevision;
 
         busy = true;
+        clearDiagnostic();
+        walkthroughBtn.disabled = true;
+        currentCompilation = null;
         runBtn.disabled = true;
         debugBtn.disabled = true;
         liveRunBtn.disabled = true;
@@ -352,7 +427,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             document.body.classList.remove('is-transpiling');
 
-            if (revision !== schemaRevision || query !== sqlEditor.getValue().trim()) {
+            if (revision !== schemaRevision || query !== sqlEditor.getValue()) {
                 invalidateOutput();
                 mqlEditor.setValue('// Query changed during compilation. Compile again.');
                 return false;
@@ -363,7 +438,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     fixSuggestion.textContent = data.suggestion;
                     fixSuggestion.style.display = 'block';
                 }
-                throw new Error(data.error || 'Compilation failed');
+                const failure = new Error(data.error || 'Compilation failed');
+                failure.diagnostic = data.diagnostic;
+                throw failure;
             }
 
             statusInd.textContent = 'SUCCESS';
@@ -385,6 +462,8 @@ document.addEventListener('DOMContentLoaded', () => {
             currentAST = data.ast || [];
             currentValidation = data.validation || '';
             compiledSQL = query;
+            currentCompilation = { ...data, sql: query };
+            walkthroughBtn.disabled = false;
             liveRunBtn.disabled = false;
             explainBtn.disabled = false;
             syncSchema(data.schema);
@@ -399,12 +478,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             });
 
+            document.dispatchEvent(new CustomEvent('compiler:compiled', { detail: { ...currentCompilation, source } }));
+
             return true;
 
         } catch (err) {
+            showDiagnostic(err.diagnostic, err.message);
             astOutput.textContent = '// Compilation failed. Fix the query and retry.';
             document.body.classList.remove('is-transpiling');
-            statusInd.textContent = 'ERR_SYNTAX';
+            statusInd.textContent = err.diagnostic ? 'ERR_' + err.diagnostic.phase.toUpperCase() : 'ERROR';
             statusInd.style.color = 'var(--error)';
             mqlEditor.setValue(`[FATAL EXCEPTION]\n${err.message}`);
             
@@ -423,10 +505,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     runBtn.addEventListener('click', transpileQuery);
+    walkthroughBtn.addEventListener('click', () => {
+        if (!currentCompilation || busy || executing) return;
+        document.dispatchEvent(new CustomEvent('compiler:walkthrough', { detail: currentCompilation }));
+    });
 
     // Live Execution
     liveRunBtn.addEventListener('click', async () => {
-        if (busy || executing || compiledSQL !== sqlEditor.getValue().trim()) return;
+        if (busy || executing || compiledSQL !== sqlEditor.getValue()) return;
         const query = mqlEditor.getValue().trim();
         if (!query || query.startsWith('//') || query.startsWith('[')) return; // Don't run errors or empty
 
@@ -468,7 +554,7 @@ document.addEventListener('DOMContentLoaded', () => {
             playSound('error');
         } finally {
             executing = false;
-            liveRunBtn.disabled = !compiledSQL || compiledSQL !== sqlEditor.getValue().trim();
+            liveRunBtn.disabled = !compiledSQL || compiledSQL !== sqlEditor.getValue();
             resetDbBtn.disabled = false;
             runBtn.disabled = false;
             debugBtn.disabled = false;
@@ -494,7 +580,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } finally {
             executing = false;
             resetDbBtn.disabled = false;
-            liveRunBtn.disabled = !compiledSQL || compiledSQL !== sqlEditor.getValue().trim();
+            liveRunBtn.disabled = !compiledSQL || compiledSQL !== sqlEditor.getValue();
             runBtn.disabled = false;
             debugBtn.disabled = false;
         }
