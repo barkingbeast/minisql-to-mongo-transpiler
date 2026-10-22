@@ -1,55 +1,49 @@
+"""Command-line interface using the same compiler as the browser and server."""
 import sys
-from lexer import tokenize
-from parser import Parser
-from semantic import SemanticAnalyzer
-from codegen import CodeGenerator
+from compiler import compile_sql
 
-def process_query(sql):
+
+def process_query(sql, schema=None):
     try:
-        tokens = tokenize(sql)
-        parser = Parser(tokens)
-        ast = parser.parse()
-        
-        print("\n=== Abstract Syntax Tree ===")
-        for node in ast:
-            print(node.to_json())
-            
-        analyzer = SemanticAnalyzer()
-        analyzer.analyze(ast)
-        
-        codegen = CodeGenerator()
-        mongo_queries = codegen.generate(ast)
-        
-        print("\n=== Generated MongoDB Queries ===")
-        for q in mongo_queries:
-            print(q)
-            
-    except Exception as e:
-        print(f"\n[Error] {e}")
+        result = compile_sql(sql, schema)
+        print('\n=== Abstract Syntax Tree ===')
+        import json
+        print(json.dumps(result['ast'], indent=2))
+        print('\n=== Generated MongoDB Queries ===')
+        for query in result['mongo_queries']:
+            print(query)
+        return result
+    except (ValueError, TypeError, SyntaxError, RecursionError) as error:
+        print(f'\n[Error] {error}', file=sys.stderr)
+        return None
+
 
 def repl():
-    print("=========================================")
-    print("  MiniSQL to MongoDB Transpiler REPL     ")
-    print("  Type your SQL queries. Type 'exit' to quit.")
-    print("=========================================\n")
+    print("MiniSQL to MongoDB Transpiler. Type 'exit' to quit.")
+    schema = None
     while True:
         try:
-            sql = input("minisql> ")
+            sql = input('minisql> ')
             if sql.strip().lower() in ('exit', 'quit'):
                 break
             if sql.strip():
-                if not sql.strip().endswith(';'):
-                    sql += ';' # Optional semicolon appending
-                process_query(sql)
+                result = process_query(sql, schema)
+                if result:
+                    schema = result['schema'] or None
         except EOFError:
             break
         except KeyboardInterrupt:
             print("\nType 'exit' to quit.")
 
+
 if __name__ == '__main__':
     if len(sys.argv) > 1:
-        with open(sys.argv[1], 'r') as f:
-            sql = f.read()
-            process_query(sql)
+        try:
+            with open(sys.argv[1], encoding='utf-8') as source:
+                result = process_query(source.read())
+            sys.exit(0 if result else 1)
+        except OSError as error:
+            print(f'[Error] {error}', file=sys.stderr)
+            sys.exit(1)
     else:
         repl()

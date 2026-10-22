@@ -135,9 +135,12 @@ document.addEventListener('DOMContentLoaded', () => {
     
     const ctx = canvas.getContext('2d');
     let currentGameLoop = null;
+    let cleanupGame = () => {};
 
     if (closeGameBtn) {
         closeGameBtn.addEventListener('click', () => {
+            cleanupGame();
+            cleanupGame = () => {};
             gameModal.classList.remove('active');
             if (currentGameLoop) {
                 cancelAnimationFrame(currentGameLoop);
@@ -148,6 +151,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function openGame(title, gameStarter) {
         if (!gameModal) return;
+        cleanupGame();
+        cleanupGame = () => {};
         gameTitle.textContent = title;
         gameModal.classList.add('active');
         ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -197,6 +202,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (paddleY > canvas.height - 60) paddleY = canvas.height - 60;
         };
         canvas.addEventListener('mousemove', moveHandler);
+        cleanupGame = () => canvas.removeEventListener('mousemove', moveHandler);
         
         function loop() {
             if (!gameModal.classList.contains('active')) {
@@ -271,6 +277,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const keyHandler = (e) => {
             if (!gameModal.classList.contains('active')) return;
+            if (e.key.startsWith('Arrow')) e.preventDefault();
             if (e.key === 'ArrowLeft') { pos.x--; if(collides()) pos.x++; }
             if (e.key === 'ArrowRight') { pos.x++; if(collides()) pos.x--; }
             if (e.key === 'ArrowDown') { pos.y++; if(collides()) pos.y--; }
@@ -281,6 +288,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
         document.addEventListener('keydown', keyHandler);
+        cleanupGame = () => document.removeEventListener('keydown', keyHandler);
         
         function collides() {
             for(let r=0; r<shape.length; r++) {
@@ -382,6 +390,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
         document.addEventListener('keydown', keyHandler);
+        cleanupGame = () => document.removeEventListener('keydown', keyHandler);
         
         function loop() {
             if (!gameModal.classList.contains('active')) {
@@ -451,6 +460,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (paddleX + paddleW > canvas.width) paddleX = canvas.width - paddleW;
         };
         canvas.addEventListener('mousemove', moveHandler);
+        cleanupGame = () => canvas.removeEventListener('mousemove', moveHandler);
         
         function loop() {
             if (!gameModal.classList.contains('active')) {

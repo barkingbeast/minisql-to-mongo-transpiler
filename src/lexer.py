@@ -1,47 +1,51 @@
+"""Regex scanner for the supported MiniSQL grammar."""
+import math
 import re
 
 TOKEN_TYPES = [
-    ('KEYWORD', r'\b(SELECT|FROM|WHERE|INSERT|INTO|VALUES|UPDATE|SET|DELETE|CREATE|TABLE|AND|OR|NOT|GROUP|BY|COUNT|SUM|AVG|INNER|JOIN|ON)\b'),
-    ('IDENTIFIER', r'[a-zA-Z_][a-zA-Z0-9_\.]*'),
-    ('NUMBER', r'\d+(\.\d+)?'),
-    ('STRING', r"'[^']*'|\"[^\"]*\""),
-    ('OPERATOR', r'>=|<=|!=|==|=|>|<'),
-    ('PUNCTUATION', r'[\(\)\,\;\*]'),
+    ('COMMENT', r'--[^\n]*|/\*[\s\S]*?\*/'),
+    ('KEYWORD', r'\b(SELECT|FROM|WHERE|INSERT|INTO|VALUES|UPDATE|SET|DELETE|CREATE|TABLE|AND|OR|NOT|GROUP|BY|COUNT|SUM|AVG|INNER|JOIN|ON|NULL|TRUE|FALSE|IS)\b'),
+    ('IDENTIFIER', r'[a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)?'),
+    ('NUMBER', r'[+-]?\d+(?:\.\d+)?'),
+    ('STRING', r"""'(?:''|[^'])*'|"(?:""|[^"])*" """.strip()),
+    ('OPERATOR', r'>=|<=|!=|<>|==|=|>|<'),
+    ('PUNCTUATION', r'[(),;*]'),
     ('WHITESPACE', r'\s+'),
-    ('MISMATCH', r'.'),
+    ('MISMATCH', r'[\s\S]'),
 ]
+TOKEN_REGEX = re.compile('|'.join('(?P<%s>%s)' % pair for pair in TOKEN_TYPES), re.IGNORECASE)
+
 
 class Token:
     def __init__(self, type, value, line, column):
-        self.type = type
-        self.value = value
-        self.line = line
-        self.column = column
+        self.type, self.value = type, value
+        self.line, self.column = line, column
+
     def __repr__(self):
-        return f"{self.type}({self.value})"
+        return f'{self.type}({self.value})'
+
 
 def tokenize(text):
-    tok_regex = '|'.join('(?P<%s>%s)' % pair for pair in TOKEN_TYPES)
-    line_num = 1
-    line_start = 0
     tokens = []
-    for mo in re.finditer(tok_regex, text, re.IGNORECASE):
-        kind = mo.lastgroup
-        value = mo.group()
-        column = mo.start() - line_start
+    line, column = 1, 1
+    for match in TOKEN_REGEX.finditer(text):
+        kind, raw = match.lastgroup, match.group()
+        value = raw
+        if kind == 'MISMATCH':
+            raise SyntaxError(f'Unexpected character {value!r} at line {line}, column {column}')
         if kind == 'NUMBER':
-            value = float(value) if '.' in value else int(value)
+            value = float(raw) if '.' in raw else int(raw)
+            if isinstance(value, float) and not math.isfinite(value):
+                raise SyntaxError(f'Number out of range at line {line}, column {column}')
         elif kind == 'STRING':
-            value = value[1:-1]
+            value = raw[1:-1].replace(raw[0] * 2, raw[0])
         elif kind == 'KEYWORD':
-            value = value.upper()
-        elif kind == 'WHITESPACE':
-            if '\n' in value:
-                line_num += value.count('\n')
-                line_start = mo.end()
-            continue
-        elif kind == 'MISMATCH':
-            raise SyntaxError(f"Unexpected character {value!r} at line {line_num} column {column}")
-        
-        tokens.append(Token(kind, value, line_num, column))
+            value = raw.upper()
+        if kind not in ('WHITESPACE', 'COMMENT'):
+            tokens.append(Token(kind, value, line, column))
+        if '\n' in raw:
+            line += raw.count('\n')
+            column = len(raw.rsplit('\n', 1)[1]) + 1
+        else:
+            column += len(raw)
     return tokens

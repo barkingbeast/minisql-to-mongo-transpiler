@@ -2,15 +2,15 @@ import json
 
 class ASTNode:
     def to_dict(self):
-        result = {"type": self.__class__.__name__}
-        for key, value in self.__dict__.items():
+        def convert(value):
             if isinstance(value, ASTNode):
-                result[key] = value.to_dict()
-            elif isinstance(value, list):
-                result[key] = [v.to_dict() if isinstance(v, ASTNode) else v for v in value]
-            else:
-                result[key] = value
-        return result
+                return value.to_dict()
+            if isinstance(value, list):
+                return [convert(item) for item in value]
+            if isinstance(value, dict):
+                return {key: convert(item) for key, item in value.items()}
+            return value
+        return {"type": self.__class__.__name__, **{key: convert(value) for key, value in self.__dict__.items()}}
     def to_json(self):
         return json.dumps(self.to_dict(), indent=2)
 
@@ -58,6 +58,11 @@ class BinaryOp(ASTNode):
 class Identifier(ASTNode):
     def __init__(self, name):
         self.name = name
+
+class UnaryOp(ASTNode):
+    def __init__(self, op, operand):
+        self.op = op
+        self.operand = operand
 
 class Literal(ASTNode):
     def __init__(self, value):

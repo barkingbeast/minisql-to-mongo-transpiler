@@ -23,10 +23,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Test compiler and API
+        run: |
+          python -m pip install -r requirements.txt
+          python -m unittest discover -s tests -v
+          node --check public/script.js
+          node --check public/pyodide_bridge.js
+          node --check public/easter_eggs.js
+
       - name: Bundle compiler sources into the site
         run: |
           mkdir -p public/src
-          cp src/ast_nodes.py src/lexer.py src/parser.py src/semantic.py src/codegen.py public/src/
+          cp src/*.py public/src/
 
       - uses: actions/configure-pages@v5
         with:

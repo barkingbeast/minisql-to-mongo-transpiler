@@ -1,75 +1,102 @@
-// Runs the Python transpiler (src/*.py) directly in the browser via Pyodide,
-// so the site works on static hosting (GitHub Pages) with no backend.
+// Shared Python compiler and isolated mock execution for static hosting.
 (function () {
-    const SRC_FILES = ['ast_nodes.py', 'lexer.py', 'parser.py', 'semantic.py', 'codegen.py'];
-    let pyodideReady = null;
+    const SRC_FILES = ['ast_nodes.py', 'lexer.py', 'parser.py', 'semantic.py', 'codegen.py', 'compiler.py', 'executor.py'];
+    let enginePromise = null;
+    let executionPromise = null;
+    let queue = Promise.resolve();
 
     function loadScript(src) {
         return new Promise((resolve, reject) => {
-            const s = document.createElement('script');
-            s.src = src;
-            s.onload = resolve;
-            s.onerror = () => reject(new Error('Failed to load ' + src));
-            document.head.appendChild(s);
+            const script = document.createElement('script');
+            script.src = src;
+            script.onload = resolve;
+            script.onerror = () => { script.remove(); reject(new Error('Could not load the compiler engine. Check your connection and retry.')); };
+            document.head.appendChild(script);
         });
     }
 
-    async function initPyodide() {
+    async function initEngine() {
         if (!window.loadPyodide) {
             await loadScript('https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js');
         }
-        const pyodide = await window.loadPyodide();
-        pyodide.FS.mkdirTree('/compiler');
-        for (const f of SRC_FILES) {
-            const res = await fetch('src/' + f);
-            if (!res.ok) throw new Error('Could not load src/' + f);
-            pyodide.FS.writeFile('/compiler/' + f, await res.text());
-        }
-        pyodide.runPython(`
+        const engine = await window.loadPyodide();
+        engine.FS.mkdirTree('/compiler');
+        await Promise.all(SRC_FILES.map(async file => {
+            const response = await fetch('src/' + file);
+            if (!response.ok) throw new Error('Could not load compiler module: ' + file);
+            engine.FS.writeFile('/compiler/' + file, await response.text());
+        }));
+        engine.runPython(`
 import sys, json
 sys.path.insert(0, '/compiler')
-from lexer import tokenize
-from parser import Parser
-from semantic import SemanticAnalyzer
-from codegen import CodeGenerator
+from compiler import transpile
+from executor import execute_mql, seeded_database
 
-def transpile(sql):
-    response = {}
+def browser_transpile(payload):
+    args = json.loads(payload)
+    return json.dumps(transpile(args['sql'], args.get('schema')))
+
+def browser_execute(mql):
     try:
-        if not sql.strip().endswith(';'):
-            sql += ';'
-        tokens = tokenize(sql)
-        ast = Parser(tokens).parse()
-        SemanticAnalyzer().analyze(ast)
-        mongo_queries, explanations = CodeGenerator().generate(ast)
-        response['success'] = True
-        response['ast'] = [n.to_dict() for n in ast]
-        response['mongo_queries'] = mongo_queries
-        response['explanations'] = explanations
-        response['tokens'] = [{'type': t.type, 'value': t.value} for t in tokens]
-    except Exception as e:
-        err = str(e)
-        response['success'] = False
-        response['error'] = err
-        if "Type mismatch" in err:
-            response['suggestion'] = "Hint: Check if you are comparing the correct data types (e.g., numbers without quotes, strings with quotes)."
-        elif "Syntax" in err or "Unexpected token" in err:
-            response['suggestion'] = "Tip: There might be a missing keyword, comma, or a mismatched quote."
-        elif "Table" in err and "does not exist" in err:
-            response['suggestion'] = "Tip: Make sure the table name matches one you've defined in the Schema Map."
-        elif "Column count" in err:
-            response['suggestion'] = "Hint: The number of values doesn't seem to match the number of columns provided."
-        else:
-            response['suggestion'] = "Tip: Double check the SQL syntax."
-    return json.dumps(response)
+        return json.dumps(execute_mql(mql, demo_db))
+    except Exception as error:
+        return json.dumps({'success': False, 'error': str(error)})
+
+def browser_reset():
+    global demo_db
+    demo_db = seeded_database()
 `);
-        return pyodide;
+        return engine;
     }
 
-    window.transpileInBrowser = async function (sql) {
-        if (!pyodideReady) pyodideReady = initPyodide();
-        const pyodide = await pyodideReady;
-        const fn = pyodide.globals.get('transpile');
-        return JSON.parse(fn(sql));
-    };
+    function getEngine() {
+        if (!enginePromise) enginePromise = initEngine().catch(error => {
+            enginePromise = null;
+            throw error;
+        });
+        return enginePromise;
+    }
+
+    function serialized(task) {
+        const result = queue.then(task);
+        queue = result.catch(() => {});
+        return result;
+    }
+
+    async function getExecutionEngine() {
+        const engine = await getEngine();
+        if (!executionPromise) {
+            executionPromise = (async () => {
+                await engine.loadPackage('micropip');
+                await engine.runPythonAsync(`
+import micropip
+await micropip.install(['packaging==23.2', 'pytz==2024.1', 'sentinels==1.1.1', 'mongomock==4.3.0'])
+browser_reset()
+`);
+            })().catch(error => { executionPromise = null; throw error; });
+        }
+        await executionPromise;
+        return engine;
+    }
+
+    function call(engine, name, ...args) {
+        const fn = engine.globals.get(name);
+        try { return fn(...args); } finally { fn.destroy(); }
+    }
+
+    window.transpileInBrowser = (sql, schema) => serialized(async () => {
+        const engine = await getEngine();
+        return JSON.parse(call(engine, 'browser_transpile', JSON.stringify({ sql, schema })));
+    });
+
+    window.executeInBrowser = mql => serialized(async () => {
+        const engine = await getExecutionEngine();
+        return JSON.parse(call(engine, 'browser_execute', mql));
+    });
+
+    window.resetBrowserDatabase = () => serialized(async () => {
+        const engine = await getExecutionEngine();
+        call(engine, 'browser_reset');
+        return { success: true, result: 'Demo database reset' };
+    });
 })();

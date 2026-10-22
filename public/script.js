@@ -21,6 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Live Execution elements
     const liveRunBtn = document.getElementById('live-run-btn');
+    const resetDbBtn = document.getElementById('reset-db-btn');
     const liveResultModal = document.getElementById('live-result-modal');
     const closeLiveResultBtn = document.getElementById('close-live-result-btn');
     const liveResultOutput = document.getElementById('live-result-output');
@@ -39,7 +40,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let currentExplanations = [];
     let currentTokens = [];
-    let isDebugMode = false;
+    let currentAST = [];
+    let currentValidation = '';
+    let executionEngine = null;
+    let compiledSQL = null;
+    let schemaRevision = 0;
+    let busy = false;
+    let executing = false;
+    liveRunBtn.disabled = true;
+    resetDbBtn.disabled = true;
+    explainBtn.disabled = true;
 
     // CodeMirror Initialization
     const sqlEditor = CodeMirror.fromTextArea(inputArea, {
@@ -62,45 +72,50 @@ document.addEventListener('DOMContentLoaded', () => {
     let audioCtx;
 
     function playSound(type) {
-        if (!audioCtx) {
-            audioCtx = new AudioContext();
-        }
-        if (audioCtx.state === 'suspended') {
-            audioCtx.resume();
-        }
+        if (!AudioContext) return;
+        try {
+            if (!audioCtx) {
+                audioCtx = new AudioContext();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume().catch(() => {});
+            }
         
-        const osc = audioCtx.createOscillator();
-        const gainNode = audioCtx.createGain();
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
         
-        osc.connect(gainNode);
-        gainNode.connect(audioCtx.destination);
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
         
-        const now = audioCtx.currentTime;
+            const now = audioCtx.currentTime;
         
-        if (type === 'blip') {
-            osc.type = 'square';
-            osc.frequency.setValueAtTime(880, now); // A5
-            osc.frequency.exponentialRampToValueAtTime(440, now + 0.1);
-            gainNode.gain.setValueAtTime(0.05, now);
-            gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
-            osc.start(now);
-            osc.stop(now + 0.1);
-        } else if (type === 'error') {
-            osc.type = 'sawtooth';
-            osc.frequency.setValueAtTime(150, now);
-            osc.frequency.exponentialRampToValueAtTime(50, now + 0.3);
-            gainNode.gain.setValueAtTime(0.1, now);
-            gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
-            osc.start(now);
-            osc.stop(now + 0.3);
-        } else if (type === 'success') {
-            osc.type = 'square';
-            osc.frequency.setValueAtTime(440, now);
-            osc.frequency.setValueAtTime(660, now + 0.1);
-            gainNode.gain.setValueAtTime(0.05, now);
-            gainNode.gain.linearRampToValueAtTime(0, now + 0.3);
-            osc.start(now);
-            osc.stop(now + 0.3);
+            if (type === 'blip') {
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(880, now); // A5
+                osc.frequency.exponentialRampToValueAtTime(440, now + 0.1);
+                gainNode.gain.setValueAtTime(0.05, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+                osc.start(now);
+                osc.stop(now + 0.1);
+            } else if (type === 'error') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.exponentialRampToValueAtTime(50, now + 0.3);
+                gainNode.gain.setValueAtTime(0.1, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            } else if (type === 'success') {
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(440, now);
+                osc.frequency.setValueAtTime(660, now + 0.1);
+                gainNode.gain.setValueAtTime(0.05, now);
+                gainNode.gain.linearRampToValueAtTime(0, now + 0.3);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            }
+        } catch (_) {
+            // Audio is decorative; unavailable audio must not block compiler controls.
         }
     }
 
@@ -161,8 +176,20 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // History Functions
+    function readHistory() {
+        try {
+            const items = JSON.parse(localStorage.getItem('demoQueryHistory') || '[]');
+            return Array.isArray(items) ? items.filter(item => item && typeof item.sql === 'string' &&
+                typeof item.mql === 'string' && typeof item.time === 'string').slice(0, 20) : [];
+        } catch (_) { return []; }
+    }
+
+    function writeHistory(items) {
+        try { localStorage.setItem('demoQueryHistory', JSON.stringify(items)); } catch (_) { /* Storage may be disabled. */ }
+    }
+
     function seedInitialHistory() {
-        if (!localStorage.getItem('demoQueryHistory')) {
+        if (!readHistory().length) {
             const initialHistory = [
                 {
                     sql: "SELECT users.name, SUM(orders.total) \nFROM users \nJOIN orders ON users.id = orders.user_id \nWHERE users.age >= 18 \nGROUP BY users.name;",
@@ -175,35 +202,38 @@ document.addEventListener('DOMContentLoaded', () => {
                     time: new Date().toLocaleTimeString()
                 }
             ];
-            localStorage.setItem('demoQueryHistory', JSON.stringify(initialHistory));
+            writeHistory(initialHistory);
         }
     }
 
     function saveHistory(sql, mql) {
-        let history = JSON.parse(localStorage.getItem('demoQueryHistory') || '[]');
+        let history = readHistory();
         history.unshift({
             sql,
             mql,
             time: new Date().toLocaleTimeString()
         });
         if (history.length > 20) history.pop();
-        localStorage.setItem('demoQueryHistory', JSON.stringify(history));
+        writeHistory(history);
         renderHistory();
     }
 
     function renderHistory() {
-        let history = JSON.parse(localStorage.getItem('demoQueryHistory') || '[]');
+        let history = readHistory();
         historyList.innerHTML = '';
         history.forEach((item, index) => {
             const div = document.createElement('div');
             div.className = 'history-item';
-            div.innerHTML = `
-                <div class="history-item-sql">${item.sql}</div>
-                <div class="history-item-time">${item.time}</div>
-            `;
+            const sqlLabel = document.createElement('div');
+            sqlLabel.className = 'history-item-sql';
+            sqlLabel.textContent = item.sql;
+            const timestamp = document.createElement('div');
+            timestamp.className = 'history-item-time';
+            timestamp.textContent = item.time;
+            div.append(sqlLabel, timestamp);
             div.addEventListener('click', () => {
                 sqlEditor.setValue(item.sql);
-                mqlEditor.setValue(item.mql);
+                mqlEditor.setValue('// Query restored. Compile it to refresh the output.');
                 historyPanel.classList.remove('active');
                 playSound('blip');
             });
@@ -212,19 +242,26 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Render AST recursively
+    function escapeHTML(value) {
+        return String(value).replace(/[&<>"']/g, char => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[char]));
+    }
+
     function renderAST(node) {
         if (node === null || node === undefined) return '';
+        if (Array.isArray(node)) return node.map(renderAST).join('');
         if (typeof node !== 'object') {
-            return `<span class="ast-node ast-leaf">${node}</span>`;
+            return `<span class="ast-node ast-leaf">${escapeHTML(node)}</span>`;
         }
         
-        let html = `<div class="ast-node ast-type">${node.type || 'Node'}</div>`;
+        let html = `<div class="ast-node ast-type">${escapeHTML(node.type || 'Node')}</div>`;
         html += `<div class="ast-children">`;
         
         for (const key in node) {
             if (key === 'type') continue;
             
-            html += `<div class="ast-prop"><strong>${key}:</strong> `;
+            html += `<div class="ast-prop"><strong>${escapeHTML(key)}:</strong> `;
             if (Array.isArray(node[key])) {
                 if (node[key].length === 0) {
                     html += `[ ]`;
@@ -245,12 +282,38 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Execution
-    runBtn.addEventListener('click', async () => {
-        if (!audioCtx) audioCtx = new AudioContext();
-        if (audioCtx.state === 'suspended') audioCtx.resume();
+    function invalidateOutput() {
+        schemaRevision++;
+        compiledSQL = null;
+        currentTokens = [];
+        currentAST = [];
+        currentExplanations = [];
+        liveRunBtn.disabled = true;
+        explainBtn.disabled = true;
+        astOutput.textContent = '// Compile the current query to refresh the AST.';
+        statusInd.textContent = 'EDITED';
+        statusInd.style.color = 'var(--accent)';
+        fixSuggestion.style.display = 'none';
+    }
+    sqlEditor.on('change', invalidateOutput);
+
+    async function transpileQuery() {
+        if (busy || executing) return false;
         
         const query = sqlEditor.getValue().trim();
-        if (!query) return;
+        if (!query) return false;
+        const revision = schemaRevision;
+
+        busy = true;
+        runBtn.disabled = true;
+        debugBtn.disabled = true;
+        liveRunBtn.disabled = true;
+        resetDbBtn.disabled = true;
+        explainBtn.disabled = true;
+        currentTokens = [];
+        currentAST = [];
+        currentExplanations = [];
+        compiledSQL = null;
 
         document.body.classList.add('is-transpiling');
         statusInd.textContent = 'PROCESSING...';
@@ -260,28 +323,47 @@ document.addEventListener('DOMContentLoaded', () => {
         fixSuggestion.style.display = 'none';
 
         try {
+            const schema = getSchema();
             let data;
-            try {
-                const response = await fetch('/api/transpile', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ sql: query })
-                });
-                if (!response.ok) throw new Error('no backend');
-                data = await response.json();
-            } catch (backendErr) {
-                // Static hosting (GitHub Pages): run the Python transpiler in-browser
+            if (executionEngine !== 'browser') {
+                let response;
+                try {
+                    response = await fetch('api/transpile', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ sql: query, schema })
+                    });
+                } catch (error) {
+                    if (executionEngine === 'server') throw new Error('The local server is unavailable. Restart it and retry.');
+                }
+                if (response && ![404, 405, 501].includes(response.status)) {
+                    data = await response.json();
+                    if (!response.ok) throw new Error(data.error || 'Compiler request failed');
+                    executionEngine = 'server';
+                } else if (executionEngine === 'server') {
+                    throw new Error('The compiler endpoint is unavailable. Restart the local server.');
+                }
+            }
+            if (!data) {
+                // Static hosting: keep compilation and execution in the same tab engine.
                 mqlEditor.setValue('// LOADING COMPILER ENGINE...');
-                data = await window.transpileInBrowser(query);
+                data = await window.transpileInBrowser(query, schema);
+                executionEngine = 'browser';
             }
             document.body.classList.remove('is-transpiling');
 
-            if (data.error) {
+            if (revision !== schemaRevision || query !== sqlEditor.getValue().trim()) {
+                invalidateOutput();
+                mqlEditor.setValue('// Query changed during compilation. Compile again.');
+                return false;
+            }
+
+            if (!data.success) {
                 if (data.suggestion) {
                     fixSuggestion.textContent = data.suggestion;
                     fixSuggestion.style.display = 'block';
                 }
-                throw new Error(data.error);
+                throw new Error(data.error || 'Compilation failed');
             }
 
             statusInd.textContent = 'SUCCESS';
@@ -300,6 +382,12 @@ document.addEventListener('DOMContentLoaded', () => {
             
             currentExplanations = data.explanations || [];
             currentTokens = data.tokens || [];
+            currentAST = data.ast || [];
+            currentValidation = data.validation || '';
+            compiledSQL = query;
+            liveRunBtn.disabled = false;
+            explainBtn.disabled = false;
+            syncSchema(data.schema);
             
             // Populate explain list
             explanationList.innerHTML = '';
@@ -311,7 +399,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             });
 
+            return true;
+
         } catch (err) {
+            astOutput.textContent = '// Compilation failed. Fix the query and retry.';
             document.body.classList.remove('is-transpiling');
             statusInd.textContent = 'ERR_SYNTAX';
             statusInd.style.color = 'var(--error)';
@@ -322,11 +413,20 @@ document.addEventListener('DOMContentLoaded', () => {
             
             cursor.classList.add('error-hover');
             setTimeout(() => cursor.classList.remove('error-hover'), 500);
+            return false;
+        } finally {
+            busy = false;
+            runBtn.disabled = false;
+            debugBtn.disabled = false;
+            resetDbBtn.disabled = !executionEngine;
         }
-    });
+    }
+
+    runBtn.addEventListener('click', transpileQuery);
 
     // Live Execution
     liveRunBtn.addEventListener('click', async () => {
+        if (busy || executing || compiledSQL !== sqlEditor.getValue().trim()) return;
         const query = mqlEditor.getValue().trim();
         if (!query || query.startsWith('//') || query.startsWith('[')) return; // Don't run errors or empty
 
@@ -339,24 +439,64 @@ document.addEventListener('DOMContentLoaded', () => {
         liveResultModal.style.transform = 'none';
         liveResultModal.style.margin = '0';
 
-        liveResultOutput.textContent = 'EXECUTING IN MONGO_DB...';
+        executing = true;
+        liveRunBtn.disabled = true;
+        resetDbBtn.disabled = true;
+        runBtn.disabled = true;
+        debugBtn.disabled = true;
+        liveResultOutput.textContent = executionEngine === 'browser' ? 'LOADING LOCAL DEMO ENGINE...' : 'EXECUTING IN DEMO DATABASE...';
         playSound('blip');
 
         try {
-            const response = await fetch('/api/execute', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ mql: query })
-            });
-            
-            const data = await response.json();
-            if (data.error) throw new Error(data.error);
+            let data;
+            if (executionEngine === 'browser') {
+                data = await window.executeInBrowser(query);
+            } else {
+                const response = await fetch('api/execute', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mql: query })
+                });
+                data = await response.json();
+            }
+            if (!data.success) throw new Error(data.error || 'Execution failed');
             
             liveResultOutput.textContent = JSON.stringify(data.result, null, 2);
             playSound('success');
         } catch (err) {
             liveResultOutput.textContent = `[EXECUTION ERROR]\n${err.message}`;
             playSound('error');
+        } finally {
+            executing = false;
+            liveRunBtn.disabled = !compiledSQL || compiledSQL !== sqlEditor.getValue().trim();
+            resetDbBtn.disabled = false;
+            runBtn.disabled = false;
+            debugBtn.disabled = false;
+        }
+    });
+
+    resetDbBtn.addEventListener('click', async () => {
+        if (executing || busy) return;
+        executing = true;
+        resetDbBtn.disabled = true;
+        liveRunBtn.disabled = true;
+        runBtn.disabled = true;
+        debugBtn.disabled = true;
+        try {
+            const data = executionEngine === 'browser' ? await window.resetBrowserDatabase() :
+                await (await fetch('api/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json();
+            if (!data.success) throw new Error(data.error || 'Reset failed');
+            liveResultOutput.textContent = data.result;
+            liveResultModal.classList.add('active');
+        } catch (error) {
+            liveResultOutput.textContent = error.message;
+            liveResultModal.classList.add('active');
+        } finally {
+            executing = false;
+            resetDbBtn.disabled = false;
+            liveRunBtn.disabled = !compiledSQL || compiledSQL !== sqlEditor.getValue().trim();
+            runBtn.disabled = false;
+            debugBtn.disabled = false;
         }
     });
 
@@ -390,17 +530,17 @@ document.addEventListener('DOMContentLoaded', () => {
     function advanceDebugPhase() {
         if (debugPhase === 1) {
             debugPhaseTitle.textContent = '> PHASE 2: SYNTAX PARSING (AST)';
-            debugContent.innerHTML = `Building Abstract Syntax Tree...\n\n${astOutput.innerHTML}`;
+            debugContent.textContent = `Building Abstract Syntax Tree...\n\n${JSON.stringify(currentAST, null, 2)}`;
             playSound('blip');
             debugPhase = 2;
         } else if (debugPhase === 2) {
             debugPhaseTitle.textContent = '> PHASE 3: SEMANTIC ANALYSIS';
-            debugContent.innerHTML = `Verifying tables and columns against Schema Map...\n\n[ OK ] Type checking passed.\n[ OK ] Constraints verified.`;
+            debugContent.textContent = currentValidation;
             playSound('success');
             debugPhase = 3;
         } else if (debugPhase === 3) {
             debugPhaseTitle.textContent = '> PHASE 4: CODE GENERATION (MQL)';
-            debugContent.innerHTML = `Translating AST to MongoDB Aggregation/Queries...\n\n${mqlEditor.getValue()}`;
+            debugContent.textContent = `Translating AST to MongoDB Aggregation/Queries...\n\n${mqlEditor.getValue()}`;
             playSound('success');
             debugPhase = 4;
         }
@@ -408,6 +548,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.addEventListener('keydown', (e) => {
         if (debugOverlay.style.display === 'flex') {
+            if (e.key === 'Escape') {
+                closeDebugBtn.click();
+                return;
+            }
+            if (e.target.closest('button')) return;
+            e.preventDefault();
             advanceDebugPhase();
         }
     });
@@ -419,7 +565,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     debugBtn.addEventListener('click', async () => {
         // Run standard transpile first
-        await runBtn.click();
+        if (!await transpileQuery()) return;
         
         debugOverlay.style.display = 'flex';
         debugPhase = 1;
@@ -428,8 +574,8 @@ document.addEventListener('DOMContentLoaded', () => {
         playSound('blip');
         
         // Show Tokens
-        const tokenStrs = currentTokens.map(t => `<span style="color:var(--accent);">[${t.type}]</span> ${t.value}`).join('\n');
-        debugContent.innerHTML = `Breaking SQL into Tokens...\n\n${tokenStrs}`;
+        const tokenStrs = currentTokens.map(t => `[${t.type}] ${t.value} (${t.line}:${t.column})`).join('\n');
+        debugContent.textContent = `Breaking SQL into Tokens...\n\n${tokenStrs}`;
     });
 
     // Hover to Translate (Syntax Mapping)
@@ -492,8 +638,9 @@ document.addEventListener('DOMContentLoaded', () => {
             x: 50,
             y: 50,
             columns: [
-                { id: 'c_1', name: 'id', type: 'uuid', isPk: true },
-                { id: 'c_2', name: 'name', type: 'text', isPk: false }
+                { id: 'c_1', name: 'id', type: 'int', isPk: true },
+                { id: 'c_2', name: 'name', type: 'text', isPk: false },
+                { id: 'c_age', name: 'age', type: 'int', isPk: false }
             ]
         },
         {
@@ -502,12 +649,56 @@ document.addEventListener('DOMContentLoaded', () => {
             x: 450,
             y: 200,
             columns: [
-                { id: 'c_3', name: 'id', type: 'uuid', isPk: true },
-                { id: 'c_4', name: 'user_id', type: 'uuid', isPk: false, fkTo: 't_users' },
-                { id: 'c_5', name: 'total', type: 'int', isPk: false }
+                { id: 'c_3', name: 'id', type: 'int', isPk: true },
+                { id: 'c_4', name: 'user_id', type: 'int', isPk: false, fkTo: 't_users' },
+                { id: 'c_5', name: 'total', type: 'int', isPk: false },
+                { id: 'c_status', name: 'status', type: 'text', isPk: false }
             ]
         }
     ];
+
+    function getSchema() {
+        const schema = Object.create(null);
+        const validName = /^[A-Za-z_][A-Za-z0-9_]*$/;
+        schemaData.forEach(table => {
+            if (!validName.test(table.name) || Object.hasOwn(schema, table.name)) {
+                throw new Error('Schema tables need unique SQL names (letters, numbers, underscores).');
+            }
+            if (!table.columns.length) throw new Error('Every schema table needs at least one column.');
+            const columns = Object.create(null);
+            table.columns.forEach(column => {
+                if (!validName.test(column.name) || Object.hasOwn(columns, column.name)) {
+                    throw new Error('Schema columns need unique SQL names within each table.');
+                }
+                columns[column.name] = column.type;
+            });
+            schema[table.name] = columns;
+        });
+        return schema;
+    }
+
+    function syncSchema(schema) {
+        if (!schema || typeof schema !== 'object') return;
+        Object.entries(schema).forEach(([name, columns]) => {
+            let table = schemaData.find(item => item.name === name);
+            if (!table) {
+                table = { id: 't_' + crypto.randomUUID(), name, x: 80, y: 80, columns: [] };
+                schemaData.push(table);
+            }
+            table.columns = Object.entries(columns).map(([column, type]) => {
+                const existing = table.columns.find(item => item.name === column);
+                return { ...existing, id: existing?.id || 'c_' + crypto.randomUUID(), name: column, type };
+            });
+        });
+        renderSchema();
+    }
+
+    function uniqueName(base, names) {
+        let candidate = base;
+        let index = 2;
+        while (names.includes(candidate)) candidate = base + '_' + index++;
+        return candidate;
+    }
 
     let dragSource = null;
     let dragOffsetX = 0;
@@ -534,6 +725,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderSchema() {
         if (!dynamicTablesContainer) return;
+        try { getSchema(); document.getElementById('schema-error').textContent = ''; }
+        catch (error) { document.getElementById('schema-error').textContent = error.message; }
         dynamicTablesContainer.innerHTML = '';
 
         schemaData.forEach(table => {
@@ -568,6 +761,7 @@ document.addEventListener('DOMContentLoaded', () => {
             nameInput.style.outline = 'none';
             nameInput.addEventListener('change', (e) => {
                 table.name = e.target.value;
+                invalidateOutput();
             });
             header.appendChild(nameInput);
             
@@ -576,6 +770,10 @@ document.addEventListener('DOMContentLoaded', () => {
             delTableBtn.style.cursor = 'pointer';
             delTableBtn.addEventListener('click', () => {
                 schemaData = schemaData.filter(t => t.id !== table.id);
+                schemaData.forEach(t => t.columns.forEach(c => {
+                    if (c.fkTo === table.id) delete c.fkTo;
+                }));
+                invalidateOutput();
                 renderSchema();
             });
             header.appendChild(delTableBtn);
@@ -604,6 +802,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 colNameInput.style.outline = 'none';
                 colNameInput.addEventListener('change', (e) => {
                     col.name = e.target.value;
+                    invalidateOutput();
                 });
 
                 const colTypeSelect = document.createElement('select');
@@ -612,7 +811,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 colTypeSelect.style.color = 'var(--accent)';
                 colTypeSelect.style.fontFamily = 'inherit';
                 colTypeSelect.style.outline = 'none';
-                ['uuid', 'text', 'int', 'time'].forEach(t => {
+                ['uuid', 'text', 'int', 'number', 'bool', 'time'].forEach(t => {
                     const opt = document.createElement('option');
                     opt.value = t;
                     opt.textContent = t;
@@ -621,6 +820,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 colTypeSelect.addEventListener('change', (e) => {
                     col.type = e.target.value;
+                    invalidateOutput();
                 });
 
                 const delColBtn = document.createElement('span');
@@ -630,6 +830,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 delColBtn.style.marginLeft = 'auto';
                 delColBtn.addEventListener('click', () => {
                     table.columns = table.columns.filter(c => c.id !== col.id);
+                    invalidateOutput();
                     renderSchema();
                 });
                 
@@ -647,10 +848,11 @@ document.addEventListener('DOMContentLoaded', () => {
             addColBtn.addEventListener('click', () => {
                 table.columns.push({
                     id: 'c_' + Math.random().toString(36).substr(2, 9),
-                    name: 'new_col',
+                    name: uniqueName('new_col', table.columns.map(c => c.name)),
                     type: 'text',
                     isPk: false
                 });
+                invalidateOutput();
                 renderSchema();
             });
             tableDiv.appendChild(addColBtn);
@@ -711,19 +913,25 @@ document.addEventListener('DOMContentLoaded', () => {
         addTableBtn.addEventListener('click', () => {
             schemaData.push({
                 id: 't_' + Math.random().toString(36).substr(2, 9),
-                name: 'new_table',
+                name: uniqueName('new_table', schemaData.map(t => t.name)),
                 x: 100,
                 y: 100,
                 columns: [
                     { id: 'c_' + Math.random().toString(36).substr(2, 9), name: 'id', type: 'uuid', isPk: true }
                 ]
             });
+            invalidateOutput();
             renderSchema();
         });
     }
 
     if (generateSqlBtn) {
         generateSqlBtn.addEventListener('click', () => {
+            try { getSchema(); } catch (error) {
+                document.getElementById('schema-error').textContent = error.message;
+                return;
+            }
+            document.getElementById('schema-error').textContent = '';
             let sql = '';
             schemaData.forEach(table => {
                 sql += `CREATE TABLE ${table.name} (\n`;
