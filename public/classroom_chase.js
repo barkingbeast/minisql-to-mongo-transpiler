@@ -1,6 +1,8 @@
 /* Self-contained cartoon game. All email is fictional and stays inside the game. */
 document.addEventListener('DOMContentLoaded', () => {
     const rules = window.ChaseRules, reduced = matchMedia('(prefers-reduced-motion: reduce)');
+    // Animate the supplied portrait with CSS; preserve the original photo file.
+    const dhawalSprite = `<span class="dhawal-sprite"><span class="dhawal-flipper"><span class="dhawal-head"><img src="assets/dhawal.jpeg" alt="Dhawal" width="64" height="72"></span><span class="dhawal-body" aria-hidden="true">👕</span><span class="dhawal-legs" aria-hidden="true">👟👟</span></span></span>`;
     const dialog = document.createElement('dialog'); dialog.className = 'chase-dialog'; dialog.setAttribute('aria-label', 'Sir vs Dhawal: The Great Compiler Escape');
     dialog.innerHTML = `<div class="chase-shell">
         <header class="chase-header"><span>DAY 01 • SIR vs DHAWAL</span><button class="chase-close" aria-label="Close game">✕</button></header>
@@ -10,12 +12,12 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="chase-stage">
             <div class="classroom-board">COMPILER DESIGN<br><small>Attendance is not an optional parameter.</small></div>
             <div class="chase-door">EXIT<br>🚪</div>
-            <div class="chase-student"><span>🏃</span><b>DHAWAL: sir just 2 min!!</b></div>
+            <div class="chase-student">${dhawalSprite}<b>DHAWAL: sir just 2 min!!</b></div>
             <div class="chase-lanes"><i></i><i></i><i></i></div>
             <div class="chase-professor"><img src="assets/dr-baskaran-p.png" alt="Professor Baskaran"><span class="prof-body">👔</span><span class="prof-legs">🦵🦵</span><b>SIR</b></div>
             <div class="chase-attacks"></div><div class="chase-feedback" aria-hidden="true"></div>
             <p class="chase-commentary" aria-live="polite"></p>
-            <div class="chase-story"><span class="chase-sticker">DHAWAL HAS ENTERED HIS VILLAIN ARC</span><div class="chase-intro-cast"><img src="assets/dr-baskaran-p.png" alt="Sir in class"><span>👨‍🏫 ➜ 🏃💨 🚪</span></div><h2>SIR vs DHAWAL<br>THE EXCUSE APOCALYPSE</h2><p>First class. Dhawal executes <code>return;</code><br>Sir executes <code>while (dhawalEscapes) chase();</code></p><p><strong>3 lives · ${rules.TARGET} points to catch Dhawal</strong><br>Three phases. Targeted shots. Two-lane barrages.<br>Red lanes warn you. Move before the excuses hit.</p><p>← → / A D / touch to move.<br><strong>SPACE or OBJECTION! = 0.65-second shield</strong> (5-second cooldown).<br>Chain dodges for ×2/×3. Last-second dodges earn +5.<br>Catch ☕ to recharge your shield faster.</p><button class="chase-start">DHAWAL. COME BACK HERE. →</button><small>*A very unserious cartoon. All mail stays in this game.</small></div>
+            <div class="chase-story"><span class="chase-sticker">DHAWAL HAS ENTERED HIS VILLAIN ARC</span><div class="chase-intro-cast"><img src="assets/dr-baskaran-p.png" alt="Sir in class"><span aria-hidden="true">➜</span>${dhawalSprite}<span aria-hidden="true">🚪</span></div><h2>SIR vs DHAWAL<br>THE EXCUSE APOCALYPSE</h2><p>First class. Dhawal executes <code>return;</code><br>Sir executes <code>while (dhawalEscapes) chase();</code></p><p><strong>3 lives · ${rules.TARGET} points to catch Dhawal</strong><br>Three phases. Targeted shots. Two-lane barrages.<br>Red lanes warn you. Move before the excuses hit.</p><p>← → / A D / touch to move.<br><strong>SPACE or OBJECTION! = 0.65-second shield</strong> (5-second cooldown).<br>Chain dodges for ×2/×3. Last-second dodges earn +5.<br>Catch ☕ to recharge your shield faster.</p><button class="chase-start">DHAWAL. COME BACK HERE. →</button><small>*A very unserious cartoon. All mail stays in this game.</small></div>
             <div class="chase-ending" hidden></div>
         </div>
         <footer class="chase-controls"><button data-move="-1" aria-label="Move sir left">← LEFT</button><button id="chase-shield" aria-label="Activate objection shield">OBJECTION! [SPACE]</button><button data-move="1" aria-label="Move sir right">RIGHT →</button></footer>
@@ -113,7 +115,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             dialog.classList.add('chase-lost'); title.textContent = 'DHAWAL HAS LEFT THE SCOPE 💥';
             text.textContent = 'Sir takes a tea break. Dhawal has already enrolled in “Advanced Excuse Engineering”.';
-            const scene = document.createElement('div'); scene.className = 'chase-loss-scene'; scene.textContent = '🪑 ☕ … 🏃💨';
+            const scene = document.createElement('div'); scene.className = 'chase-loss-scene'; scene.innerHTML = `<span aria-hidden="true">🪑 ☕ …</span>${dhawalSprite}`;
             ending.append(title, text, scene, stats, replay); commentary.textContent = 'Compilation terminated. Dhawal wins this round.';
         }
         replay.focus();

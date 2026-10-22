@@ -176,7 +176,9 @@ a second sort column for deterministic engine comparisons.
 
 Choose **08 · Dhawal boss fight** in History, or enter `RUN FROM CLASS;`
 (or `SELECT * FROM attendance;`) and click EXECUTE. The opening shows Dhawal escaping the
-first compiler-design class and Sir chasing him, using the existing professor portrait.
+first compiler-design class and Sir chasing him, using the existing professor portrait and the supplied Dhawal photo. Dhawal’s photo avatar dances
+and performs somersaults in the opening, chase and escape ending. Motion pauses with the game;
+reduced-motion preferences disable the flips and dancing. The original photo is preserved as an asset.
 
 You play as Sir. There are **three lives and a 400-point target**, with three escalating phases:
 The Great Escape, Viva Panic and Reply-All Apocalypse. Targeted attacks and two-lane barrages

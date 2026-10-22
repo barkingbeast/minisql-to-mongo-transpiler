@@ -85,3 +85,34 @@
 .chase-story p { font-size:clamp(11px,1.5vw,14px); }
 .chase-ending h2 { font-size:clamp(24px,3.6vw,35px); }
 @media(max-width:500px) { .chase-status { font-size:9px; padding:8px; flex-wrap:wrap; } .chase-controls { padding:9px; gap:6px; } .chase-controls button { min-width:65px; padding:8px 6px; font-size:11px; } #chase-shield { min-width:140px; } .chase-lanes i.danger::after { font-size:9px; } .chase-story { justify-content:flex-start; } .chase-feedback { white-space:normal; width:95%; text-align:center; } }
+/* Dhawal's real portrait: nested transforms keep dancing, flips and lane movement independent. */
+.chase-student { animation:none; min-width:130px; text-align:center; }
+.dhawal-sprite { display:inline-block; position:relative; width:76px; height:111px; vertical-align:middle; transform-origin:50% 88%; animation:dhawal-dance .72s ease-in-out infinite; }
+.dhawal-flipper { display:block; position:relative; width:100%; height:100%; transform-origin:50% 50%; animation:dhawal-flip 3.2s ease-in-out infinite; }
+.dhawal-head { display:block; position:absolute; top:0; left:6px; width:64px; height:72px; overflow:hidden; border:3px solid #302418; border-radius:45% 45% 40% 40%; background:#f7dfc2; z-index:2; box-shadow:2px 3px 0 #30241845; }
+.chase-dialog .dhawal-head img { display:block; width:100%; height:100%; border:0; border-radius:0; object-fit:cover; object-position:57% 44%; transform:scale(1.4); }
+.dhawal-body { position:absolute; left:16px; top:55px; font-size:45px; line-height:1; }
+.dhawal-legs { position:absolute; left:11px; top:90px; font-size:21px; line-height:1; white-space:nowrap; animation:dhawal-feet .22s infinite alternate; }
+.chase-student b { position:relative; margin:3px auto 0; width:max-content; max-width:170px; }
+.chase-intro-cast { min-height:88px; }
+.chase-intro-cast .dhawal-sprite { width:61px; height:89px; zoom:.8; }
+.chase-intro-cast .dhawal-flipper { width:76px; height:111px; }
+.chase-loss-scene { display:flex; align-items:center; justify-content:center; gap:18px; animation:none; padding:10px 24px; }
+.chase-loss-scene .dhawal-sprite { width:76px; height:111px; }
+.chase-loss-scene .dhawal-flipper { animation-duration:1.8s; }
+.chase-paused .dhawal-sprite,.chase-paused .dhawal-flipper,.chase-paused .dhawal-legs { animation-play-state:paused; }
+.chase-won .chase-student .dhawal-flipper { animation:none; transform:rotate(-12deg); }
+@keyframes dhawal-dance {
+    0%,100% { transform:translateY(0) rotate(-9deg); }
+    25% { transform:translateY(-9px) rotate(10deg); }
+    50% { transform:translateY(-2px) rotate(-12deg); }
+    75% { transform:translateY(-11px) rotate(8deg); }
+}
+@keyframes dhawal-flip {
+    0%,64% { transform:rotate(0deg) scale(1); }
+    73% { transform:translateY(-17px) rotate(-90deg) scale(.9); }
+    82% { transform:translateY(-24px) rotate(-210deg) scale(.95); }
+    94%,100% { transform:rotate(-360deg) scale(1); }
+}
+@keyframes dhawal-feet { from { transform:rotate(-16deg) translateX(-3px); } to { transform:rotate(16deg) translateX(3px); } }
+@media(prefers-reduced-motion:reduce) { .chase-dialog .dhawal-sprite,.chase-dialog .dhawal-flipper,.chase-dialog .dhawal-legs { animation:none !important; } }
