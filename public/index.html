@@ -14,6 +14,8 @@
     
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="features.css">
+    <link rel="stylesheet" href="workspace.css">
+    <link rel="stylesheet" href="classroom_chase.css">
 </head>
 <body>
     <div class="crt-overlay"></div>
@@ -56,6 +58,7 @@
                 <button class="retro-btn" id="close-modal-btn">[ X ]</button>
             </div>
         </div>
+        <p style="padding:10px">Click PK to mark a primary key. Use a column’s reference menu to connect it to a matching PK. Lines show N:1. Relationships are design metadata; database constraints are not enforced.</p>
         <p id="schema-error" role="alert"></p>
         <div class="modal-body" id="schema-canvas">
             <!-- SVG lines will be generated dynamically -->
@@ -73,6 +76,13 @@
             <div class="blinking-cursor">_</div>
         </header>
 
+        <nav class="project-toolbar" aria-label="Project files">
+            <button class="retro-btn" id="save-project">Save project</button>
+            <button class="retro-btn" id="export-project">Export JSON</button>
+            <button class="retro-btn" id="import-project">Import JSON</button>
+            <input type="file" id="import-project-file" accept=".json,application/json" hidden>
+            <small id="project-status" role="status">Projects include SQL, schema, relationships, layout and history. Demo data is temporary.</small>
+        </nav>
         <div class="editor-grid stagger-2">
             <div class="panel input-panel">
                 <div class="panel-header">
@@ -124,6 +134,10 @@ GROUP BY users.name;</textarea>
                 // AWAITING AST...
             </div>
         </div>
+        <section class="panel inspection-panel" id="comparison-panel">
+            <div class="panel-header"><h2>SQL vs MONGODB // RESULT COMPARISON</h2><button class="retro-btn" id="compare-results">Compare results</button></div>
+            <div class="inspection-body" id="comparison-result" aria-live="polite">Compile a SELECT, then compare both engines on the current demo data.</div>
+        </section>
     </main>
 
     <dialog id="professor-celebration" class="professor-celebration" aria-labelledby="professor-message">
@@ -214,9 +228,15 @@ GROUP BY users.name;</textarea>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/sql/sql.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/javascript/javascript.min.js"></script>
     <script src="pyodide_bridge.js"></script>
+    <script src="project_storage.js"></script>
     <script src="script.js"></script>
     <script src="professor_celebration.js"></script>
     <script src="walkthrough.js"></script>
     <script src="easter_eggs.js"></script>
+    <script src="workspace.js"></script>
+    <!-- Optional: delete the next script tag to remove pipeline visualization. -->
+    <script src="pipeline_visualizer.js"></script>
+    <script src="chase_rules.js"></script>
+    <script src="classroom_chase.js"></script>
 </body>
 </html>

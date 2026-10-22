@@ -1,0 +1,54 @@
+.chase-dialog { width:min(900px,96vw); max-height:96dvh; padding:0; border:4px solid #302418; border-radius:20px; background:#fff2d7; color:#302418; box-shadow:12px 12px 0 #302418; font-family:'Trebuchet MS',sans-serif; overflow:auto; }
+.chase-dialog::backdrop { background:rgba(32,22,16,.8); backdrop-filter:blur(5px); }
+.chase-dialog * { cursor:auto; box-sizing:border-box; }
+.chase-dialog button { cursor:pointer; color:#302418; background:#ffcf49; border:3px solid #302418; border-radius:9px; padding:9px 14px; font-weight:900; font-family:inherit; box-shadow:3px 3px 0 #302418; }
+.chase-dialog button:focus-visible { outline:3px solid #e94635; outline-offset:3px; }
+.chase-dialog button:disabled { opacity:.5; }
+.chase-header { display:flex; align-items:center; justify-content:space-between; padding:12px 18px; background:#ffcf49; font-weight:900; letter-spacing:2px; }
+.chase-close { box-shadow:none !important; }
+.chase-scoreboard { display:flex; justify-content:space-around; align-items:center; padding:10px; gap:6px; background:#fff9ec; border-block:3px solid #302418; font-size:clamp(12px,2vw,18px); }
+#chase-lives { color:#d73a32; }
+.chase-stage { height:min(570px,66dvh); min-height:350px; position:relative; overflow:hidden; background:linear-gradient(#f3dfba 0 55%,#ddad76 55%); }
+.classroom-board { position:absolute; top:12px; left:7%; width:64%; background:#285a45; color:#fff8dd; text-align:center; padding:14px; border:8px solid #a36c3e; font-weight:900; transform:rotate(-2deg); }
+.classroom-board small { font-size:10px; font-weight:400; }
+.chase-door { position:absolute; right:7%; top:10px; text-align:center; font-size:22px; background:#b87640; padding:5px 10px; border:3px solid #302418; }
+.chase-student { position:absolute; left:75%; top:22%; font-size:40px; animation:student-flee 1.2s infinite; z-index:2; }
+.chase-student b { display:block; background:#fff9ec; border:2px solid #302418; border-radius:12px; font-size:10px; padding:5px; }
+.chase-lanes { position:absolute; inset:35% 0 0; display:flex; }
+.chase-lanes i { flex:1; border-right:2px dashed #b0784b; }
+.chase-professor { position:absolute; bottom:10%; left:50%; width:74px; height:125px; transform:translateX(-50%); transition:left .12s ease-out; z-index:4; text-align:center; }
+.chase-professor img { position:absolute; top:0; left:9px; width:56px; height:65px; object-fit:cover; border:3px solid #302418; border-radius:45% 45% 35% 35%; z-index:2; transform:rotate(-7deg); }
+.prof-body { position:absolute; top:47px; left:9px; font-size:56px; line-height:1; }
+.prof-legs { position:absolute; top:88px; left:8px; font-size:26px; animation:sir-run .25s infinite alternate; }
+.chase-professor b { position:absolute; bottom:-14px; left:15px; font-size:10px; padding:2px 8px; border-radius:5px; background:#ffcf49; }
+.chase-projectile { position:absolute; top:25%; transform:translate(-50%,-50%) rotate(var(--wobble,0deg)); width:28%; max-width:200px; padding:12px 6px; background:#fff9ed; border:3px solid #302418; box-shadow:4px 4px 0 #e85b40; border-radius:10px; font-size:clamp(10px,1.8vw,17px); font-weight:900; text-align:center; z-index:5; }
+.chase-commentary { position:absolute; margin:0; bottom:5px; left:5%; width:90%; padding:8px; border-radius:7px; background:#fff9ec; font-size:12px; text-align:center; z-index:6; }
+.chase-commentary:empty { display:none; }
+.chase-story,.chase-ending { position:absolute; inset:0; padding:clamp(15px,3vw,30px); background:rgba(255,242,215,.97); z-index:8; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:12px; overflow:auto; }
+.chase-story h2,.chase-ending h2 { margin:0; font-size:clamp(24px,4vw,45px); line-height:1; font-weight:1000; letter-spacing:-1px; color:#d7442d; text-shadow:2px 2px #ffcf49; }
+.chase-story p,.chase-ending p { margin:0; line-height:1.4; font-size:clamp(12px,1.8vw,16px); max-width:530px; }
+.chase-story small { font-size:10px; }
+.chase-sticker { font-size:10px; font-weight:900; letter-spacing:2px; background:#ffcf49; padding:6px 12px; transform:rotate(-3deg); }
+.chase-controls { display:flex; align-items:center; justify-content:space-between; padding:14px; gap:8px; font-size:12px; font-weight:900; }
+.chase-controls button { min-width:90px; touch-action:manipulation; }
+.prof-hit { filter:sepia(1) saturate(8); }
+.chase-mail { position:relative; max-width:470px; width:95%; background:#fffdf6; border:3px solid #302418; border-radius:8px; padding:12px; text-align:left; transform:rotate(-2deg); box-shadow:5px 5px 0 #f6bd38; }
+.chase-mail p { white-space:pre-line; font-size:12px; }
+.chase-mail strong { display:block; margin-top:10px; font-size:11px; color:#28654c; }
+.chase-mail-plane { position:absolute; font-size:45px; right:10px; top:50%; animation:mail-away 2s ease-in-out infinite; }
+.chase-laptop { font-size:32px; }
+.chase-loss-scene { font-size:45px; padding:24px; animation:student-flee 1s infinite; }
+.chase-paused .chase-stage::after { content:'PAUSED • Press Resume'; position:absolute; inset:0; display:grid; place-items:center; background:rgba(255,242,215,.9); z-index:9; font-weight:900; font-size:24px; }
+.chase-paused .chase-student,.chase-paused .prof-legs { animation-play-state:paused; }
+@keyframes student-flee { 0%,100% { transform:rotate(-8deg) translateX(-8px); } 50% { transform:rotate(8deg) translateX(8px); } }
+@keyframes sir-run { from { transform:rotate(-12deg); } to { transform:rotate(12deg); } }
+@keyframes mail-away { 0% { transform:translate(0,0) rotate(-20deg); opacity:1; } 90%,100% { transform:translate(150px,-100px) rotate(20deg); opacity:0; } }
+@media(prefers-reduced-motion:reduce) { .chase-dialog * { animation:none !important; transition:none !important; } }
+@media(max-width:500px) { .chase-dialog { border-radius:10px; box-shadow:none; } .chase-header { font-size:10px; letter-spacing:1px; } .chase-controls span { display:none; } .chase-story { gap:8px; } .chase-mail p { font-size:10px; } }
+
+.chase-header { flex-direction:row; border-bottom:0; }
+.chase-story,.chase-ending { justify-content:safe center; }
+.chase-intro-cast { display:flex; align-items:center; gap:14px; font-size:30px; }
+.chase-intro-cast img { width:48px; height:55px; border:3px solid #302418; border-radius:12px; object-fit:cover; transform:rotate(-8deg); }
+.chase-dialog { margin:auto; text-shadow:none; }
+.chase-laptop img { width:35px; height:40px; object-fit:cover; border-radius:10px; border:2px solid #302418; vertical-align:middle; }

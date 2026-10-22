@@ -225,6 +225,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Modal & Panel interactions
     minimapBtn.addEventListener('click', () => {
         schemaModal.classList.add('active');
+        requestAnimationFrame(renderConnections);
         playSound('blip');
     });
 
@@ -352,6 +353,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Execution
     function invalidateOutput() {
         clearDiagnostic();
+        document.dispatchEvent(new Event('compiler:invalidated'));
         currentCompilation = null;
         walkthroughBtn.disabled = true;
         schemaRevision++;
@@ -548,6 +550,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!data.success) throw new Error(data.error || 'Execution failed');
             
             liveResultOutput.textContent = JSON.stringify(data.result, null, 2);
+            document.dispatchEvent(new Event('database:changed'));
             playSound('success');
         } catch (err) {
             liveResultOutput.textContent = `[EXECUTION ERROR]\n${err.message}`;
@@ -572,6 +575,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = executionEngine === 'browser' ? await window.resetBrowserDatabase() :
                 await (await fetch('api/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json();
             if (!data.success) throw new Error(data.error || 'Reset failed');
+            document.dispatchEvent(new Event('database:changed'));
             liveResultOutput.textContent = data.result;
             liveResultModal.classList.add('active');
         } catch (error) {
@@ -732,11 +736,11 @@ document.addEventListener('DOMContentLoaded', () => {
         {
             id: 't_orders',
             name: 'orders',
-            x: 450,
+            x: 550,
             y: 200,
             columns: [
                 { id: 'c_3', name: 'id', type: 'int', isPk: true },
-                { id: 'c_4', name: 'user_id', type: 'int', isPk: false, fkTo: 't_users' },
+                { id: 'c_4', name: 'user_id', type: 'int', isPk: false, fkTo: 't_users', fkColumn: 'c_1' },
                 { id: 'c_5', name: 'total', type: 'int', isPk: false },
                 { id: 'c_status', name: 'status', type: 'text', isPk: false }
             ]
@@ -744,6 +748,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ];
 
     function getSchema() {
+        window.MiniSQLProjects.validateSchema(schemaData);
         const schema = Object.create(null);
         const validName = /^[A-Za-z_][A-Za-z0-9_]*$/;
         schemaData.forEach(table => {
@@ -773,7 +778,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             table.columns = Object.entries(columns).map(([column, type]) => {
                 const existing = table.columns.find(item => item.name === column);
-                return { ...existing, id: existing?.id || 'c_' + crypto.randomUUID(), name: column, type };
+                return { ...existing, id: existing?.id || 'c_' + crypto.randomUUID(), name: column, type, isPk: existing?.isPk || false };
             });
         });
         renderSchema();
@@ -791,22 +796,31 @@ document.addEventListener('DOMContentLoaded', () => {
     let dragOffsetY = 0;
 
     function renderConnections() {
-        let svgHtml = '';
-        schemaData.forEach(t1 => {
-            t1.columns.forEach(col => {
-                if (col.fkTo) {
-                    const t2 = schemaData.find(t => t.id === col.fkTo);
-                    if (t2) {
-                        const x1 = t1.x + 100; // approximate center right
-                        const y1 = t1.y + 50; 
-                        const x2 = t2.x; 
-                        const y2 = t2.y + 20;
-                        svgHtml += `<path d="M ${x1} ${y1} C ${x1+50} ${y1}, ${x2-50} ${y2}, ${x2} ${y2}" stroke="var(--phosphor)" stroke-width="2" fill="none" stroke-dasharray="5,5"/>`;
-                    }
-                }
+        connectionLines.replaceChildren();
+        const box = connectionLines.getBoundingClientRect();
+        schemaData.forEach(table => table.columns.forEach(col => {
+            if (!col.fkTo || !col.fkColumn) return;
+            const from = document.getElementById(col.id)?.getBoundingClientRect();
+            const to = document.getElementById(col.fkColumn)?.getBoundingClientRect();
+            if (!from || !to || !from.width) return;
+            const x1 = from.right - box.left, y1 = from.top + from.height / 2 - box.top;
+            const x2 = to.left - box.left, y2 = to.top + to.height / 2 - box.top;
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('d', `M ${x1} ${y1} C ${x1+60} ${y1}, ${x2-60} ${y2}, ${x2} ${y2}`);
+            path.setAttribute('stroke', 'var(--accent)'); path.setAttribute('stroke-width', '2'); path.setAttribute('fill', 'none');
+            const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+            title.textContent = `${table.name}.${col.name} → ${schemaData.find(t => t.id === col.fkTo)?.name} (N:1)`;
+            path.append(title); connectionLines.append(path);
+            [[x1, y1, 'N'], [x2, y2, '1']].forEach(([x,y,label]) => {
+                const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                text.setAttribute('x', x + (label === '1' ? -16 : 5)); text.setAttribute('y', y - 6);
+                text.setAttribute('fill', 'var(--accent)'); text.textContent = label; connectionLines.append(text);
             });
-        });
-        connectionLines.innerHTML = svgHtml;
+        }));
+    }
+
+    function clearReferences(columnId) {
+        schemaData.forEach(t => t.columns.forEach(c => { if (c.fkColumn === columnId) { delete c.fkTo; delete c.fkColumn; } }));
     }
 
     function renderSchema() {
@@ -848,6 +862,7 @@ document.addEventListener('DOMContentLoaded', () => {
             nameInput.addEventListener('change', (e) => {
                 table.name = e.target.value;
                 invalidateOutput();
+                renderSchema();
             });
             header.appendChild(nameInput);
             
@@ -857,7 +872,7 @@ document.addEventListener('DOMContentLoaded', () => {
             delTableBtn.addEventListener('click', () => {
                 schemaData = schemaData.filter(t => t.id !== table.id);
                 schemaData.forEach(t => t.columns.forEach(c => {
-                    if (c.fkTo === table.id) delete c.fkTo;
+                    if (c.fkTo === table.id) { delete c.fkTo; delete c.fkColumn; }
                 }));
                 invalidateOutput();
                 renderSchema();
@@ -874,9 +889,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 colDiv.style.alignItems = 'center';
                 colDiv.style.gap = '5px';
                 
-                let icon = document.createElement('span');
-                icon.style.width = '16px';
-                icon.innerHTML = col.isPk ? '🔑' : (col.fkTo ? '🔗' : '');
+                const icon = document.createElement('button');
+                icon.type = 'button'; icon.className = 'key-toggle';
+                icon.textContent = col.isPk ? '🔑 PK' : 'PK';
+                icon.setAttribute('aria-pressed', String(col.isPk));
+                icon.title = 'Toggle primary key (one column per table)';
+                icon.addEventListener('click', () => {
+                    const selected = !col.isPk;
+                    table.columns.forEach(c => { if (c.isPk) clearReferences(c.id); c.isPk = false; });
+                    col.isPk = selected; invalidateOutput(); renderSchema();
+                });
                 
                 const colNameInput = document.createElement('input');
                 colNameInput.value = col.name;
@@ -889,10 +911,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 colNameInput.addEventListener('change', (e) => {
                     col.name = e.target.value;
                     invalidateOutput();
+                    renderSchema();
                 });
 
                 const colTypeSelect = document.createElement('select');
-                colTypeSelect.style.background = 'transparent';
+                colTypeSelect.style.background = 'var(--bg-color)';
                 colTypeSelect.style.border = 'none';
                 colTypeSelect.style.color = 'var(--accent)';
                 colTypeSelect.style.fontFamily = 'inherit';
@@ -907,6 +930,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 colTypeSelect.addEventListener('change', (e) => {
                     col.type = e.target.value;
                     invalidateOutput();
+                    renderSchema();
                 });
 
                 const delColBtn = document.createElement('span');
@@ -915,6 +939,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 delColBtn.style.color = 'var(--error)';
                 delColBtn.style.marginLeft = 'auto';
                 delColBtn.addEventListener('click', () => {
+                    clearReferences(col.id);
                     table.columns = table.columns.filter(c => c.id !== col.id);
                     invalidateOutput();
                     renderSchema();
@@ -923,6 +948,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 colDiv.appendChild(icon);
                 colDiv.appendChild(colNameInput);
                 colDiv.appendChild(colTypeSelect);
+                const reference = document.createElement('select');
+                reference.className = 'fk-select';
+                reference.setAttribute('aria-label', `Foreign key for ${table.name}.${col.name}`);
+                reference.add(new Option('No reference', ''));
+                schemaData.forEach(target => target.columns.filter(c => c.isPk).forEach(pk => {
+                    const option = new Option(`→ ${target.name}.${pk.name}${pk.type !== col.type ? ' (type mismatch)' : ''}`, pk.id);
+                    option.disabled = pk.type !== col.type;
+                    option.selected = col.fkColumn === pk.id;
+                    reference.add(option);
+                }));
+                reference.addEventListener('change', () => {
+                    const target = schemaData.find(t => t.columns.some(c => c.id === reference.value));
+                    if (target) { col.fkTo = target.id; col.fkColumn = reference.value; }
+                    else { delete col.fkTo; delete col.fkColumn; }
+                    invalidateOutput(); renderSchema();
+                });
+                colDiv.appendChild(reference);
                 colDiv.appendChild(delColBtn);
                 tableDiv.appendChild(colDiv);
             });
@@ -946,7 +988,7 @@ document.addEventListener('DOMContentLoaded', () => {
             dynamicTablesContainer.appendChild(tableDiv);
         });
 
-        renderConnections();
+        requestAnimationFrame(renderConnections);
     }
 
     document.addEventListener('mousemove', (e) => {
@@ -1030,6 +1072,33 @@ document.addEventListener('DOMContentLoaded', () => {
             playSound('success');
         });
     }
+
+    // A narrow extension API keeps optional tools independent from the editor.
+    window.MiniSQL = {
+        getProject: () => ({format: 'minisql-project', version: 1, sql: sqlEditor.getValue(), tables: structuredClone(schemaData), history: readHistory()}),
+        loadProject: project => {
+            window.MiniSQLProjects.validate(project);
+            schemaData = structuredClone(project.tables);
+            sqlEditor.setValue(project.sql); writeHistory(project.history);
+            invalidateOutput(); renderHistory(); renderSchema();
+        },
+        inspect: async tool => {
+            if (busy || executing) throw new Error('Wait for the current operation to finish.');
+            if (!currentCompilation || compiledSQL !== sqlEditor.getValue()) throw new Error('Compile the current SELECT first.');
+            const revision = schemaRevision;
+            const payload = {tool, sql: compiledSQL, schema: getSchema()};
+            executing = true;
+            try {
+                const data = executionEngine === 'browser' ? await window.inspectInBrowser(payload) :
+                    await (await fetch('api/' + tool, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)})).json();
+                if (revision !== schemaRevision) throw new Error('Query or schema changed. Run inspection again.');
+                if (!data.success) throw new Error(data.error || 'Inspection failed.');
+                return data;
+            } finally { executing = false; }
+        }
+    };
+    window.addEventListener('resize', renderConnections);
+    document.getElementById('schema-canvas').addEventListener('scroll', renderConnections);
 
     // Initial render
     seedInitialHistory();

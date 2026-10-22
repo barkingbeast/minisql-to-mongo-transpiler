@@ -104,8 +104,38 @@ unless requested. SELECT * retains MongoDB document shapes, including nested JOI
 - History: local query history, safely rendered as text.
 - Demo execution and reset: temporary sample data, with stale output disabled after an edit.
 
-Query history is stored locally when browser storage is available. Schema changes are kept for the
-current page session; refresh restores the default map.
+Projects autosave locally when browser storage is available. **Save project** forces a save;
+**Export JSON** and **Import JSON** round-trip the SQL, schema, PK/FK metadata, table positions
+and query history using a validated versioned project file (max 2 MB). Reload restores the saved
+project. Demo database contents remain temporary and are not part of project files.
+
+### Result comparison and pipeline inspection
+
+Below the AST, **Compare results** executes one SELECT in SQLite and the MongoDB simulation
+against the calling session's current demo data. It never applies writes. It checks duplicate counts,
+uses a small floating-point tolerance, and checks row order when ORDER BY is present. SELECT *
+is flattened to schema columns for comparison (including joins); MongoDB's automatic _id is omitted
+unless declared in the schema. Both tables and any differences are shown. Dialect differences are
+reported rather than hidden. Nested source values are not supported by the SQLite comparison.
+Outputs are cleared when the query/schema changes or the demo database is run/reset.
+
+The optional **Pipeline / Watch the data** panel shows actual documents and counts at every
+pipeline stage, with input, stage navigation, previous/next and up to 50 sample documents per stage.
+For simple find queries, the equivalent match/project stages are inspected. Inspection rejects
+intermediate results over 500 documents instead of presenting a truncated total as complete.
+Click **Hide** to hide it temporarily. To remove it independently, remove just the
+`pipeline_visualizer.js` script tag from `public/index.html`; the module creates its own panel and
+does not affect comparison, schema editing or the compiler.
+
+### Editable relationships
+
+In Schema Map, click **PK** to select one primary-key column per table. Choose another column's
+reference dropdown to link to an exact PK column of the same type. Connections show N:1 and
+attach to column rows. Stable IDs keep links through renames and movement; removing a referenced
+column/table or replacing a PK clears affected links. Incompatible type edits display an error until
+corrected. Composite keys are not supported. These relationships are design metadata saved in
+projects; MongoDB constraints are not enforced, and Generate SQL emits the supported column/type
+DDL without PK/FK clauses.
 
 ### Review celebration
 
@@ -130,6 +160,17 @@ confetti, the message **DR. BASKARAN P — THE BEST COMPILER DESIGN TEACHER!**, 
 The celebration closes after eight seconds or with Escape/Close, then returns focus to EXECUTE.
 Reduced-motion users see a stationary portrait. Only this CREATE TABLE AST triggers it; strings,
 comments, failed compilations, Debug and Walkthrough do not trigger the celebration.
+
+### Classroom chase Easter egg
+
+Enter `RUN FROM CLASS;` (or `SELECT * FROM attendance;`) and click EXECUTE.
+The opening tells the first-class escape story using the existing professor portrait.
+You play as Sir: dodge flying student excuses and suspicious questions in three lanes with
+left/right, A/D, or the on-screen touch buttons. Three lives, +10 for each dodge, 50 points to win.
+Pause/Resume (or P), automatic background pause, replay and Escape/Close are supported.
+Winning animates a fictional email from Sir; losing causes an excuse-buffer-overflow tea break.
+No real email is sent. The best score is saved locally; reduced-motion users get simplified motion.
+Existing Easter eggs and the professor appreciation celebration remain available.
 
 ## Static hosting / GitHub Pages
 
@@ -157,6 +198,8 @@ POST JSON to:
 
 - /api/transpile: {"sql": "...", "schema": {"users": {"id": "int"}}}. Schema is optional.
 - /api/execute: {"mql": "..."}. Only supported MongoDB methods with JSON arguments are accepted.
+- /api/compare: {"sql": "SELECT name FROM users;", "schema": {...}}. Read-only SQLite vs mongomock comparison.
+- /api/pipeline: same payload; read-only intermediate stage snapshots.
 - /api/reset: {}. Resets only the calling browser's demo session.
 
 GET /api/health reports the mock execution engine.
@@ -168,6 +211,7 @@ It is a local educational demo server, not an internet-facing deployment server.
 
 ```sh
 python -m unittest discover -s tests -v
+node tests/test_browser_logic.cjs
 node --check public/script.js
 node --check public/pyodide_bridge.js
 node --check public/easter_eggs.js

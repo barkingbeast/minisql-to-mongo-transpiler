@@ -1,0 +1,28 @@
+[hidden] { display: none !important; }
+.project-toolbar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:16px 0 24px; }
+.project-toolbar small { flex-basis:100%; color:var(--accent); }
+.inspection-panel { margin-top:26px; min-width:0; }
+.inspection-panel h2 { font:inherit; margin:0; }
+.inspection-body { padding:20px; line-height:1.6; }
+.inspection-body p { margin:0 0 16px; }
+.inspection-body pre { overflow:auto; max-height:440px; white-space:pre; padding:12px; border:1px solid var(--phosphor-dim); margin-top:16px; }
+.comparison-columns { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; }
+.comparison-columns h3 { font-size:1em; margin:12px 0; }
+.result-table-scroll { overflow:auto; }
+.result-table-scroll table { width:100%; border-collapse:collapse; }
+.result-table-scroll th,.result-table-scroll td { padding:9px 12px; text-align:left; border-bottom:1px solid var(--phosphor-dim); white-space:nowrap; }
+.comparison-match { color:var(--phosphor); font-weight:bold; }
+.comparison-diff { color:#ffc857; font-weight:bold; }
+.pipeline-nav { display:flex; flex-wrap:wrap; gap:8px; margin:14px 0; }
+.pipeline-nav [aria-pressed=true] { background:var(--phosphor); color:var(--bg-color); }
+.schema-table { width:440px !important; }
+.schema-table .table-row { min-height:40px; }
+.key-toggle { min-width:48px; background:transparent; color:var(--accent); border:1px solid var(--phosphor-dim); padding:4px; cursor:pointer; }
+.fk-select { min-width:120px; max-width:175px; background:var(--bg-color); color:var(--accent); border:1px solid var(--phosphor-dim); font:inherit; font-size:12px; }
+.schema-table input:focus,.schema-table select:focus,.key-toggle:focus-visible { outline:2px solid var(--accent) !important; }
+.connection-lines { overflow:visible; pointer-events:none; }
+#schema-canvas { min-height:500px; overflow:auto; }
+@media(max-width:750px) { .comparison-columns { grid-template-columns:1fr; } .inspection-body { padding:12px; } .inspection-panel .panel-header { flex-wrap:wrap; gap:10px; } }
+.project-toolbar .retro-btn,.inspection-body .retro-btn,#pipeline-visualizer + .retro-btn { color:var(--phosphor); border:1px solid var(--phosphor-dim); padding:5px 10px; }
+.project-toolbar .retro-btn:hover,.inspection-body .retro-btn:hover { color:var(--bg-color); }
+.schema-table:hover { transform:none; }

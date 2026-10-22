@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / 'src'))
 from compiler import transpile
 from executor import execute_mql, seeded_database
+from inspection import compare_results, inspect_pipeline
 
 PORT = int(os.environ.get('PORT', '8000'))
 MAX_BODY = 256_000
@@ -48,7 +49,7 @@ class TranspilerHandler(SimpleHTTPRequestHandler):
         if origin and origin != 'http://' + self.headers['Host']:
             return self.send_json({'success': False, 'error': 'Cross-origin API requests are not allowed'}, 403)
         path = urlsplit(self.path).path
-        if path not in ('/api/transpile', '/api/execute', '/api/reset'):
+        if path not in ('/api/transpile', '/api/execute', '/api/reset', '/api/compare', '/api/pipeline'):
             return self.send_json({'success': False, 'error': 'Unknown API endpoint'}, 404)
         try:
             if self.headers.get_content_type() != 'application/json':
@@ -81,6 +82,9 @@ class TranspilerHandler(SimpleHTTPRequestHandler):
                 if path == '/api/reset':
                     session['db'] = seeded_database()
                     result = {'success': True, 'result': 'Demo database reset'}
+                elif path in ('/api/compare', '/api/pipeline'):
+                    inspect = compare_results if path == '/api/compare' else inspect_pipeline
+                    result = inspect(payload.get('sql'), payload.get('schema'), session['db'])
                 else:
                     result = execute_mql(payload.get('mql'), session['db'])
             self.send_json(result)

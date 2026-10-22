@@ -67,6 +67,22 @@ class APITests(unittest.TestCase):
         _, reset = self.request('/api/execute', {'mql': 'db.users.find({})'})
         self.assertEqual(len(reset['result']), 3)
 
+    def test_inspection_endpoints_share_only_callers_session(self):
+        other = build_opener(HTTPCookieProcessor(CookieJar()))
+        payload = {'sql': 'SELECT name FROM users;', 'schema': DEMO_SCHEMA}
+        self.request('/api/execute', {'mql': 'db.users.deleteMany({})'})
+        status, mine = self.request('/api/compare', payload)
+        self.assertEqual(status, 200)
+        self.assertTrue(mine['match'])
+        self.assertEqual(mine['sql_rows'], [])
+        _, theirs = self.request('/api/compare', payload, client=other)
+        self.assertEqual(len(theirs['sql_rows']), 3)
+        _, stages = self.request('/api/pipeline', payload)
+        self.assertEqual(stages['snapshots'][0]['count'], 0)
+        status, rejected = self.request('/api/pipeline', {'sql': 'DELETE FROM users;', 'schema': DEMO_SCHEMA})
+        self.assertEqual(status, 400)
+        self.assertFalse(rejected['success'])
+
     def test_malformed_input(self):
         for payload in ([], {'sql': 123}, {'sql': None}, {'sql': ''}):
             status, data = self.request('/api/transpile', payload)
